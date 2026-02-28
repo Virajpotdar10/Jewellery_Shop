@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api';
-import { Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2, ChevronLeft } from 'lucide-react';
+import { Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2 } from 'lucide-react';
 
 interface Customer { _id: string; name: string; mobile: string; currentBalance: number; }
 interface LedgerEntry { _id: string; date: string; description: string; credit: number; debit: number; balance: number; }

@@ -33,10 +33,7 @@ const Dashboard = () => {
     const [silverRate, setSilverRate] = useState<SilverRate | null>(null);
     const [report, setReport] = useState<DailyReport | null>(null);
     const [manualRate, setManualRate] = useState('');
-    const [loading, setLoading] = useState(true);
-
     const fetchData = async () => {
-        setLoading(true);
         try {
             const [rateRes, reportRes] = await Promise.all([
                 api.get('/silver-rates').catch(() => null),
@@ -45,7 +42,6 @@ const Dashboard = () => {
             if (rateRes) setSilverRate(rateRes.data);
             if (reportRes) setReport(reportRes.data);
         } catch (e) { }
-        setLoading(false);
     };
 
     useEffect(() => { fetchData(); }, []);
