@@ -9,7 +9,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/jewell
 
 const users = [
     { username: 'virajpotdar4@gmail.com', password: 'as123456', role: 'Admin' },
-    { username: 'sandeepotdar1995@gmail.com', password: '123456', role: 'Admin' },
+    { username: 'sandeeppotdar1995@gmail.com', password: '123456', role: 'Admin' },
 ];
 
 async function seed() {
