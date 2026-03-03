@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../api';
 import {
-    Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2, Coins, Plus
+    Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2, Coins
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
