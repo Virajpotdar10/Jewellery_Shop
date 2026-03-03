@@ -42,8 +42,7 @@ const Login = () => {
                     <div className="inline-flex items-center justify-center h-14 w-14 rounded-full bg-white/20 mb-3">
                         <Diamond className="h-7 w-7 text-white" />
                     </div>
-                    <h1 className="text-2xl font-bold text-white">श्रीयश ज्वेलर्स</h1>
-                    <p className="text-white/70 text-sm mt-1">Management System</p>
+                    <p className="text-white/70 text-sm mt-1">Jewellery Shop</p>
                 </div>
 
                 {/* Form */}
@@ -66,7 +65,7 @@ const Login = () => {
                                 required
                                 autoComplete="username"
                                 className="w-full px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-                                placeholder="virajpotdar4@gmail.com"
+
                             />
                         </div>
 
@@ -81,7 +80,7 @@ const Login = () => {
                                 required
                                 autoComplete="current-password"
                                 className="w-full px-4 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
-                                placeholder="••••••••"
+
                             />
                         </div>
 

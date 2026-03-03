@@ -25,6 +25,7 @@ import ledgerRoutes from './routes/ledgerRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
+import silverAdjustmentRoutes from './routes/silverAdjustmentRoutes.js';
 
 import { startCronJob } from './controllers/silverRateController.js';
 
@@ -36,6 +37,7 @@ app.use('/api/ledger', ledgerRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/silver-adjustments', silverAdjustmentRoutes);
 
 // Start Auto Fetch Job
 startCronJob();

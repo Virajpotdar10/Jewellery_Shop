@@ -3,8 +3,10 @@ import Customer from '../models/Customer.js';
 
 export const getCustomerLedger = async (req, res) => {
     try {
-        const entries = await LedgerEntry.find({ customerId: req.params.customerId }).sort({ date: 1 });
-        const customer = await Customer.findById(req.params.customerId).select('name mobile currentBalance');
+        const entries = await LedgerEntry.find({ customerId: req.params.customerId })
+            .sort({ date: 1, createdAt: 1 });
+        const customer = await Customer.findById(req.params.customerId)
+            .select('name mobile currentBalance address');
         res.json({ customer, entries });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -13,25 +15,26 @@ export const getCustomerLedger = async (req, res) => {
 
 export const addLedgerEntry = async (req, res) => {
     try {
-        const { customerId, description, credit, debit } = req.body;
+        const { customerId, description, credit, debit, entryType } = req.body;
 
         let customer = await Customer.findById(customerId);
         if (!customer) return res.status(404).json({ message: 'Customer not found' });
 
-        // Let's assume balance is what Customer owes the shop
-        let newBalance = customer.currentBalance + (debit || 0) - (credit || 0);
+        const newBalance = parseFloat(
+            (customer.currentBalance + (debit || 0) - (credit || 0)).toFixed(2)
+        );
 
         const entry = new LedgerEntry({
             customerId,
+            entryType: entryType || (credit > 0 ? 'MANUAL_CREDIT' : 'MANUAL_DEBIT'),
             description,
             credit: credit || 0,
             debit: debit || 0,
-            balance: newBalance
+            balance: newBalance,
         });
 
         await entry.save();
 
-        // Update Customer currentBalance
         customer.currentBalance = newBalance;
         await customer.save();
 

@@ -1,5 +1,16 @@
 import mongoose from 'mongoose';
 
+const ENTRY_TYPES = [
+    'BILL',
+    'CASH_PAYMENT',
+    'UPI_PAYMENT',
+    'BANK_PAYMENT',
+    'SILVER_PAYMENT',
+    'SILVER_ADJUSTMENT',
+    'MANUAL_CREDIT',
+    'MANUAL_DEBIT',
+];
+
 const ledgerEntrySchema = new mongoose.Schema({
     customerId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -9,6 +20,12 @@ const ledgerEntrySchema = new mongoose.Schema({
     date: {
         type: Date,
         default: Date.now,
+    },
+    entryType: {
+        type: String,
+        enum: ENTRY_TYPES,
+        required: true,
+        default: 'MANUAL_CREDIT',
     },
     description: {
         type: String,
@@ -27,10 +44,16 @@ const ledgerEntrySchema = new mongoose.Schema({
         required: true,
     },
     refId: {
-        // Could refer to a Bill ID or Payment ID
         type: mongoose.Schema.Types.ObjectId,
-    }
+        default: null,
+    },
+    refModel: {
+        type: String,
+        enum: ['Bill', 'Payment', 'SilverAdjustment', null],
+        default: null,
+    },
 }, { timestamps: true });
 
 const LedgerEntry = mongoose.model('LedgerEntry', ledgerEntrySchema);
+export { ENTRY_TYPES };
 export default LedgerEntry;
