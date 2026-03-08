@@ -6,7 +6,7 @@ const billItemSchema = new mongoose.Schema({
     weight: { type: Number, required: true },
     touch: { type: Number, required: true },
     fine: { type: Number, required: true },
-    rate: { type: Number, required: true },
+    rate: { type: Number },
     makingCharge: { type: Number, required: true, default: 0 },
     amount: { type: Number, required: true }
 });
@@ -41,6 +41,9 @@ const billSchema = new mongoose.Schema({
     subtotal: { type: Number, required: true },
     totalMakingCharges: { type: Number, default: 0 },
     previousBalance: { type: Number, default: 0 },
+    previousFine: { type: Number, default: 0 },
+    silverRateUsed: { type: Number, default: 0 },
+    totalFineWeight: { type: Number, default: 0 },
     totalPayable: { type: Number, required: true },
     paymentBreakdown: { type: paymentBreakdownSchema, default: () => ({}) },
     paidAmount: { type: Number, default: 0 },
@@ -54,7 +57,7 @@ const billSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Auto-compute status based on remainingBalance
-billSchema.pre('save', function (next) {
+billSchema.pre('save', function () {
     if (this.remainingBalance <= 0) {
         this.status = 'PAID';
     } else if (this.paidAmount > 0) {
@@ -62,7 +65,6 @@ billSchema.pre('save', function (next) {
     } else {
         this.status = 'UNPAID';
     }
-    next();
 });
 
 const Bill = mongoose.model('Bill', billSchema);

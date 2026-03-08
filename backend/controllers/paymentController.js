@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Payment from '../models/Payment.js';
 import Customer from '../models/Customer.js';
 import LedgerEntry from '../models/LedgerEntry.js';
+import Bill from '../models/Bill.js';
 
 /**
  * Helper: compute silver fine weight & monetary value
@@ -81,6 +82,29 @@ export const addPayment = async (req, res) => {
         else if (hasUpi) method = 'UPI';
         else if (hasBank) method = 'Bank';
 
+        // --- Check and update Bill if billId is provided ---
+        let billUpdatePromise = null;
+        if (billId) {
+            const bill = await Bill.findById(billId).session(session);
+            if (!bill) {
+                await session.abortTransaction();
+                return res.status(404).json({ message: 'Bill not found.' });
+            }
+            const monetaryPayment = Number(cashAmount) + Number(upiAmount) + Number(bankAmount);
+            if (monetaryPayment > 0) {
+                bill.paidAmount = parseFloat((bill.paidAmount + monetaryPayment).toFixed(2));
+                bill.remainingBalance = parseFloat((bill.totalPayable - bill.paidAmount).toFixed(2));
+
+                // Update payment breakdown for the receipt
+                if (!bill.paymentBreakdown) bill.paymentBreakdown = {};
+                bill.paymentBreakdown.cashPaid = (bill.paymentBreakdown.cashPaid || 0) + Number(cashAmount);
+                bill.paymentBreakdown.upiPaid = (bill.paymentBreakdown.upiPaid || 0) + Number(upiAmount);
+                bill.paymentBreakdown.bankPaid = (bill.paymentBreakdown.bankPaid || 0) + Number(bankAmount);
+
+                billUpdatePromise = bill.save({ session });
+            }
+        }
+
         // --- Save Payment ---
         const payment = await new Payment({
             customerId,
@@ -158,6 +182,10 @@ export const addPayment = async (req, res) => {
         // --- Update customer balance ---
         customer.currentBalance = newBalance;
         await customer.save({ session });
+
+        if (billUpdatePromise) {
+            await billUpdatePromise;
+        }
 
         await session.commitTransaction();
         res.status(201).json(payment);

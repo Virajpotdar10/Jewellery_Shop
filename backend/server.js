@@ -5,10 +5,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+import settingsRoutes from './routes/settingsRoutes.js';
+
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.use('/api/settings', settingsRoutes);
 
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/jewellery-shop-db';
@@ -26,18 +30,21 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import silverAdjustmentRoutes from './routes/silverAdjustmentRoutes.js';
+import silverPaymentRoutes from './routes/silverPaymentRoutes.js';
 
 import { startCronJob } from './controllers/silverRateController.js';
 
 app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/silver-rates', silverRateRoutes);
+app.use('/api/silver-adjustments', silverAdjustmentRoutes);
+app.use('/api/silver-payments', silverPaymentRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/ledger', ledgerRoutes);
 app.use('/api/payments', paymentRoutes);
-app.use('/api/inventory', inventoryRoutes);
+// app.use('/api/inventory', inventoryRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/silver-adjustments', silverAdjustmentRoutes);
+
 
 // Start Auto Fetch Job
 startCronJob();

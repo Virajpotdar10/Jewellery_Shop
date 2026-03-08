@@ -1,23 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import html2canvas from 'html2canvas';
 import api from '../api';
 import {
-    Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2, Coins
+    Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2, Coins, X, Plus, Share2
 } from 'lucide-react';
+import type { Customer, SilverPayment, PaymentMode } from '../types';
+import { PrintableBill } from '../components/PrintableBill';
 
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
-interface Customer { _id: string; name: string; mobile: string; currentBalance: number; }
 interface LedgerEntry {
-    _id: string; date: string; description: string;
+    _id: string; date: string; description: string; refId?: string;
     credit: number; debit: number; balance: number; entryType: string;
 }
-interface SilverPayment {
-    grossWeight: number; purity: number; fineWeight: number;
-    silverRate: number; silverValue: number;
-}
-interface Bill { _id: string; billNumber: number; date: string; remainingBalance: number; totalPayable: number; }
+interface Bill { _id: string; billNumber: number; date: string; remainingBalance: number; totalPayable: number; items: any[]; subtotal: number; previousBalance: number; previousFine?: number; paymentBreakdown: any; silverRateUsed: number; totalFineWeight: number; }
 
 // ─────────────────────────────────────────────
 // Entry-type badge config
@@ -33,72 +31,8 @@ const ENTRY_BADGE: Record<string, { label: string; cls: string }> = {
     MANUAL_DEBIT: { label: 'उधार', cls: 'bg-orange-100 text-orange-700 border-orange-300' },
 };
 
-type PaymentMode = 'Cash' | 'UPI' | 'Bank' | 'Silver' | 'Mixed';
-
 const MODE_LABELS: Record<PaymentMode, string> = {
-    Cash: 'रोख', UPI: 'UPI', Bank: 'बँक', Silver: 'चांदी', Mixed: 'मिश्र',
-};
-
-// ─────────────────────────────────────────────
-// Silver fields sub-form
-// ─────────────────────────────────────────────
-const SilverFields = ({ silver, onChange, currentRate }: {
-    silver: SilverPayment;
-    onChange: (s: SilverPayment) => void;
-    currentRate: number;
-}) => {
-    const update = (field: keyof SilverPayment, value: number) => {
-        const next = { ...silver, [field]: value };
-        const gw = field === 'grossWeight' ? value : next.grossWeight;
-        const pur = field === 'purity' ? value : next.purity;
-        const rate = field === 'silverRate' ? value : next.silverRate;
-        next.fineWeight = parseFloat(((gw * pur) / 100).toFixed(4));
-        next.silverValue = parseFloat((next.fineWeight * rate).toFixed(2));
-        onChange(next);
-    };
-
-    return (
-        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg space-y-2">
-            <p className="text-xs font-semibold text-yellow-800 flex items-center gap-1">
-                <Coins className="h-3.5 w-3.5" /> चांदी तपशील
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-                <div>
-                    <label className="text-xs text-yellow-700 block mb-1">एकूण वजन (ग्रॅम) *</label>
-                    <input type="number" min={0} value={silver.grossWeight || ''}
-                        onChange={e => update('grossWeight', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-yellow-400"
-                        placeholder="0" />
-                </div>
-                <div>
-                    <label className="text-xs text-yellow-700 block mb-1">शुद्धता % *</label>
-                    <input type="number" min={0} max={100} value={silver.purity || ''}
-                        onChange={e => update('purity', parseFloat(e.target.value) || 0)}
-                        className="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-yellow-400"
-                        placeholder="80" />
-                </div>
-                <div>
-                    <label className="text-xs text-yellow-700 block mb-1">फाइन वजन (g)</label>
-                    <input type="number" value={silver.fineWeight || ''} readOnly
-                        className="w-full border border-yellow-200 rounded px-2 py-1.5 text-sm bg-yellow-100 text-yellow-800 font-semibold" />
-                </div>
-                <div>
-                    <label className="text-xs text-yellow-700 block mb-1">दर ₹/g *</label>
-                    <input type="number" min={0} value={silver.silverRate || ''}
-                        onChange={e => update('silverRate', parseFloat(e.target.value) || 0)}
-                        onFocus={() => { if (!silver.silverRate && currentRate) update('silverRate', currentRate); }}
-                        className="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-yellow-400"
-                        placeholder={String(currentRate || '')} />
-                </div>
-            </div>
-            {silver.silverValue > 0 && (
-                <div className="flex items-center justify-between bg-yellow-100 rounded px-3 py-2 mt-1">
-                    <span className="text-xs text-yellow-700 font-medium">चांदी मूल्य:</span>
-                    <span className="text-base font-bold text-yellow-900">₹{silver.silverValue.toFixed(2)}</span>
-                </div>
-            )}
-        </div>
-    );
+    Cash: 'रोख', UPI: 'UPI', Bank: 'बँक', Mixed: 'मिश्र',
 };
 
 // ─────────────────────────────────────────────
@@ -112,35 +46,74 @@ const Ledger = () => {
     const [search, setSearch] = useState(searchParams.get('customerName') || '');
     const [loading, setLoading] = useState(false);
     const [listLoading, setListLoading] = useState(true);
-    const [silverRatePerGram, setSilverRatePerGram] = useState(0);
 
-    // ── Payment Modal ──
     const [showPayment, setShowPayment] = useState(false);
     const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash');
     const [cashAmount, setCashAmount] = useState('');
     const [upiAmount, setUpiAmount] = useState('');
     const [bankAmount, setBankAmount] = useState('');
-    const [silver, setSilver] = useState<SilverPayment>({ grossWeight: 0, purity: 0, fineWeight: 0, silverRate: 0, silverValue: 0 });
     const [paymentSaving, setPaymentSaving] = useState(false);
 
-    // ── Silver Adjustment Modal ──
-    const [showAdjustment, setShowAdjustment] = useState(false);
-    const [customerBills, setCustomerBills] = useState<Bill[]>([]);
-    const [adjBillId, setAdjBillId] = useState('');
-    const [adjDate, setAdjDate] = useState(new Date().toISOString().split('T')[0]);
-    const [adjSilver, setAdjSilver] = useState<SilverPayment>({ grossWeight: 0, purity: 0, fineWeight: 0, silverRate: 0, silverValue: 0 });
-    const [adjNotes, setAdjNotes] = useState('');
+    // ── View Bill & Silver Post-Payment ──
+    const [viewBill, setViewBill] = useState<Bill | null>(null);
+    const [billSilverPayments, setBillSilverPayments] = useState<SilverPayment[]>([]);
+    const [addSilver, setAddSilver] = useState({ grossWeight: 0, purity: 0 });
     const [adjSaving, setAdjSaving] = useState(false);
+    const [sharing, setSharing] = useState(false);
+    const printRef = useRef<HTMLDivElement>(null);
+
+    // ── Post-Bill Rupee Payment ──
+    const [addRupee, setAddRupee] = useState({ cash: 0, upi: 0, bank: 0 });
+    const [rupeeSaving, setRupeeSaving] = useState(false);
+
+    // ── Capture printRef as image ──
+    const captureBillCanvas = () => html2canvas(printRef.current!, {
+        scale: 2.5,
+        useCORS: true,
+        backgroundColor: '#FFFDE7',
+        logging: false
+    });
+
+    const handleShareWhatsApp = async () => {
+        if (!printRef.current || !selectedCustomer || !viewBill) return;
+        setSharing(true);
+        try {
+            const canvas = await captureBillCanvas();
+            canvas.toBlob(async (blob) => {
+                if (!blob) { setSharing(false); return; }
+                const file = new File([blob], `bill-${viewBill.billNumber}.png`, { type: 'image/png' });
+
+                if (navigator.share && navigator.canShare?.({ files: [file] })) {
+                    await navigator.share({
+                        files: [file],
+                        title: `बिल - ${selectedCustomer.name}`,
+                        text: `अलंकार ज्वेलर्स — बिल`
+                    });
+                } else {
+                    // Desktop fallback
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url;
+                    a.download = `bill-${viewBill.billNumber}.png`; a.click();
+                    URL.revokeObjectURL(url);
+
+                    setTimeout(() => {
+                        const phone = selectedCustomer.mobile?.replace(/\D/g, '');
+                        if (phone) window.open(`https://wa.me/91${phone}?text=नमस्कार,%20बिल+पाठवत+आहे+📄`, '_blank');
+                        else window.open('https://web.whatsapp.com', '_blank');
+                    }, 1200);
+                }
+            }, 'image/png');
+        } catch (e) {
+            console.error(e);
+            alert('WhatsApp वर शेअर करताना त्रुटी आली.');
+        }
+        setSharing(false);
+    };
 
     // ── Load all customers ──
     useEffect(() => {
         setListLoading(true);
         api.get('/customers').then(r => setAllCustomers(r.data)).catch(() => { }).finally(() => setListLoading(false));
-
-        // Fetch silver rate
-        api.get('/silver-rates')
-            .then(r => setSilverRatePerGram(parseFloat(((r.data?.rate || 0) / 1000).toFixed(2))))
-            .catch(() => { });
 
         const id = searchParams.get('customerId');
         if (id) {
@@ -184,7 +157,6 @@ const Ledger = () => {
         if (paymentMode === 'Cash' || paymentMode === 'Mixed') total += parseFloat(cashAmount) || 0;
         if (paymentMode === 'UPI' || paymentMode === 'Mixed') total += parseFloat(upiAmount) || 0;
         if (paymentMode === 'Bank' || paymentMode === 'Mixed') total += parseFloat(bankAmount) || 0;
-        if (paymentMode === 'Silver' || paymentMode === 'Mixed') total += silver.silverValue || 0;
         return parseFloat(total.toFixed(2));
     })();
 
@@ -198,12 +170,8 @@ const Ledger = () => {
                 cashAmount: (paymentMode === 'Cash' || paymentMode === 'Mixed') ? parseFloat(cashAmount) || 0 : 0,
                 upiAmount: (paymentMode === 'UPI' || paymentMode === 'Mixed') ? parseFloat(upiAmount) || 0 : 0,
                 bankAmount: (paymentMode === 'Bank' || paymentMode === 'Mixed') ? parseFloat(bankAmount) || 0 : 0,
-                silverGrossWeight: (paymentMode === 'Silver' || paymentMode === 'Mixed') ? silver.grossWeight : 0,
-                silverPurity: (paymentMode === 'Silver' || paymentMode === 'Mixed') ? silver.purity : 0,
-                silverRate: (paymentMode === 'Silver' || paymentMode === 'Mixed') ? silver.silverRate : 0,
             });
             setCashAmount(''); setUpiAmount(''); setBankAmount('');
-            setSilver({ grossWeight: 0, purity: 0, fineWeight: 0, silverRate: 0, silverValue: 0 });
             setShowPayment(false);
             loadLedger(selectedCustomer._id);
             alert('पेमेंट यशस्वीरित्या नोंदवले!');
@@ -213,50 +181,75 @@ const Ledger = () => {
         setPaymentSaving(false);
     };
 
-    // ── Open Silver Adjustment Modal ──
-    const openAdjustmentModal = async () => {
-        if (!selectedCustomer) return;
-        // Load customer's bills
+    // ── Open View Bill Modal ──
+    const openViewBill = async (billId?: string) => {
+        if (!selectedCustomer || !billId) return;
         try {
-            const res = await api.get(`/bills?customerId=${selectedCustomer._id}`);
-            setCustomerBills(res.data);
-            if (res.data.length > 0) setAdjBillId(res.data[0]._id);
-        } catch { }
-        // Auto-fill silver rate
-        if (silverRatePerGram > 0) {
-            setAdjSilver(prev => ({ ...prev, silverRate: silverRatePerGram }));
+            const billRes = await api.get(`/bills/${billId}`);
+            const paymentsRes = await api.get(`/silver-payments/${selectedCustomer._id}`);
+
+            setViewBill(billRes.data);
+            setBillSilverPayments(paymentsRes.data.filter((p: any) => p.billId === billId));
+            setAddSilver({ grossWeight: 0, purity: 0 });
+        } catch (e) {
+            alert('बिल उघडताना त्रुटी आली.');
         }
-        setShowAdjustment(true);
     };
 
     // ── Handle Silver Adjustment Submit ──
-    const handleAdjustment = async () => {
-        if (!selectedCustomer || !adjBillId) return;
-        if (!adjSilver.grossWeight || !adjSilver.purity || !adjSilver.silverRate)
+    const handleAddSilverPayment = async () => {
+        if (!selectedCustomer || !viewBill) return;
+        if (!addSilver.grossWeight || !addSilver.purity)
             return alert('कृपया सर्व चांदी तपशील भरा.');
+
         setAdjSaving(true);
         try {
-            await api.post('/silver-adjustments', {
-                billId: adjBillId,
+            await api.post('/silver-payments', {
+                billId: viewBill._id,
                 customerId: selectedCustomer._id,
-                date: adjDate,
-                grossWeight: adjSilver.grossWeight,
-                purity: adjSilver.purity,
-                silverRate: adjSilver.silverRate,
-                notes: adjNotes,
+                grossWeight: addSilver.grossWeight,
+                purity: addSilver.purity,
+                notes: 'Post-bill silver payment'
             });
-            setShowAdjustment(false);
-            setAdjSilver({ grossWeight: 0, purity: 0, fineWeight: 0, silverRate: 0, silverValue: 0 });
-            setAdjNotes('');
+
+            // Refresh bill view and ledger
+            alert('चांदी पेमेंट यशस्वीरित्या नोंदवले!');
+            openViewBill(viewBill._id);
             loadLedger(selectedCustomer._id);
-            alert('चांदी समायोजन यशस्वीरित्या नोंदवले!');
+            setAddSilver({ grossWeight: 0, purity: 0 });
         } catch (e: any) {
-            alert(e.response?.data?.message || 'समायोजन नोंदवताना त्रुटी झाली.');
+            alert(e.response?.data?.message || 'पेमेंट नोंदवताना त्रुटी झाली.');
         }
         setAdjSaving(false);
     };
 
-    const MODES: PaymentMode[] = ['Cash', 'UPI', 'Bank', 'Silver', 'Mixed'];
+    const handleAddRupeePayment = async () => {
+        if (!selectedCustomer || !viewBill) return;
+        const total = (addRupee.cash || 0) + (addRupee.upi || 0) + (addRupee.bank || 0);
+        if (total <= 0) return alert('कृपया किमान रक्कम भरा.');
+
+        setRupeeSaving(true);
+        try {
+            await api.post('/payments', {
+                customerId: selectedCustomer._id,
+                billId: viewBill._id,
+                cashAmount: addRupee.cash || 0,
+                upiAmount: addRupee.upi || 0,
+                bankAmount: addRupee.bank || 0,
+                notes: 'बिलासाठी नंतर जमा केलेले पेमेंट'
+            });
+
+            alert('पेमेंट यशस्वीरित्या नोंदवले!');
+            openViewBill(viewBill._id);
+            loadLedger(selectedCustomer._id);
+            setAddRupee({ cash: 0, upi: 0, bank: 0 });
+        } catch (e: any) {
+            alert(e.response?.data?.message || 'पेमेंट नोंदवताना त्रुटी झाली.');
+        }
+        setRupeeSaving(false);
+    };
+
+    const MODES: PaymentMode[] = ['Cash', 'UPI', 'Bank', 'Mixed'];
 
     return (
         <div className="space-y-6">
@@ -268,10 +261,6 @@ const Ledger = () => {
                 </div>
                 {selectedCustomer && (
                     <div className="flex gap-2 flex-wrap">
-                        <button onClick={openAdjustmentModal}
-                            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
-                            <Coins className="h-4 w-4" /> चांदी समायोजन
-                        </button>
                         <button onClick={() => { setShowPayment(true); setPaymentMode('Cash'); }}
                             className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors text-sm font-medium">
                             <CreditCard className="h-4 w-4" /> पेमेंट घ्या
@@ -328,9 +317,6 @@ const Ledger = () => {
                                     placeholder="0" />
                             </div>
                         )}
-                        {(paymentMode === 'Silver' || paymentMode === 'Mixed') && (
-                            <SilverFields silver={silver} onChange={setSilver} currentRate={silverRatePerGram} />
-                        )}
 
                         {paymentTotal > 0 && (
                             <div className="bg-green-50 border border-green-200 rounded-md px-4 py-2 flex justify-between items-center">
@@ -351,75 +337,124 @@ const Ledger = () => {
             )}
 
             {/* ═══════════════════════════════
-                SILVER ADJUSTMENT MODAL
+                VIEW BILL MODAL
             ═══════════════════════════════ */}
-            {showAdjustment && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-                        <h2 className="text-xl font-bold text-amber-700 flex items-center gap-2">
-                            <Coins className="h-5 w-5" /> चांदी समायोजन
-                        </h2>
-                        <p className="text-sm text-muted-foreground">
-                            {selectedCustomer?.name} — शिल्लक: <strong className="text-destructive">₹{selectedCustomer?.currentBalance?.toLocaleString('en-IN')}</strong>
-                        </p>
-
-                        {/* Bill selector */}
-                        <div>
-                            <label className="block text-sm font-medium mb-1">बिल निवडा *</label>
-                            {customerBills.length === 0 ? (
-                                <p className="text-sm text-muted-foreground italic">या ग्राहकाचे कोणतेही बिल आढळले नाही.</p>
-                            ) : (
-                                <select value={adjBillId} onChange={e => setAdjBillId(e.target.value)}
-                                    className="w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300">
-                                    {customerBills.map(b => (
-                                        <option key={b._id} value={b._id}>
-                                            बिल #{b.billNumber} — {new Date(b.date).toLocaleDateString('mr-IN')} — शिल्लक ₹{b.remainingBalance?.toFixed(0)}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
+            {viewBill && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-0 sm:p-4">
+                    <div className="bg-white sm:rounded-xl shadow-2xl w-full max-w-[1240px] flex flex-col h-full sm:h-auto sm:max-h-[96vh]">
+                        <div className="p-3 sm:p-4 border-b flex justify-between items-center bg-gray-50 sm:rounded-t-xl shrink-0">
+                            <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+                                👁️ बिल पूर्वावलोकन <span className="text-muted-foreground text-sm font-normal">#{viewBill.billNumber}</span>
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handleShareWhatsApp}
+                                    disabled={sharing}
+                                    className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition disabled:opacity-50 text-xs font-bold"
+                                >
+                                    <Share2 className="h-4 w-4" /> {sharing ? 'तयार होत आहे...' : 'WhatsApp वर पाठवा'}
+                                </button>
+                                <button onClick={() => setViewBill(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="h-5 w-5" /></button>
+                            </div>
                         </div>
-
-                        {/* Date */}
-                        <div>
-                            <label className="block text-sm font-medium mb-1">दिनांक *</label>
-                            <input type="date" value={adjDate} onChange={e => setAdjDate(e.target.value)}
-                                className="w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300" />
-                        </div>
-
-                        {/* Silver fields */}
-                        <SilverFields silver={adjSilver} onChange={setAdjSilver} currentRate={silverRatePerGram} />
-
-                        {/* Notes */}
-                        <div>
-                            <label className="block text-sm font-medium mb-1">नोट्स</label>
-                            <input type="text" value={adjNotes} onChange={e => setAdjNotes(e.target.value)}
-                                className="w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                                placeholder="वैकल्पिक नोट्स..." />
-                        </div>
-
-                        {adjSilver.silverValue > 0 && (
-                            <div className="bg-amber-50 border border-amber-300 rounded-md px-4 py-3 space-y-1">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-amber-700">चांदी मूल्य (कपात होईल):</span>
-                                    <strong className="text-amber-800">₹{adjSilver.silverValue.toFixed(2)}</strong>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-amber-700">नवीन शिल्लक (अंदाज):</span>
-                                    <strong className="text-green-700">
-                                        ₹{((selectedCustomer?.currentBalance || 0) - adjSilver.silverValue).toFixed(2)}
-                                    </strong>
+                        <div className="flex-1 overflow-y-auto p-3 sm:p-5 flex flex-col xl:flex-row gap-6">
+                            {/* TOP: Printable Bill Preview (Shows at TOP on mobile) */}
+                            <div className="w-full xl:flex-1 overflow-x-auto bg-gray-50 p-2 sm:p-4 rounded-lg flex justify-center border border-dashed border-gray-300 min-h-[300px]">
+                                <style>{`
+                                    @media (max-width: 480px) { .responsive-bill { zoom: 0.58; transform: scale(0.58); transform-origin: top center; } }
+                                    @media (min-width: 481px) and (max-width: 640px) { .responsive-bill { zoom: 0.65; } }
+                                    @media (min-width: 641px) and (max-width: 1024px) { .responsive-bill { zoom: 0.72; } }
+                                    @media (min-width: 1025px) { .responsive-bill { zoom: 0.85; } }
+                                    
+                                    /* Firefox fallback for zoom */
+                                    @-moz-document url-prefix() {
+                                        @media (max-width: 480px) { .responsive-bill { transform: scale(0.58); transform-origin: top center; } }
+                                        @media (min-width: 481px) and (max-width: 640px) { .responsive-bill { transform: scale(0.65); transform-origin: top center; } }
+                                        @media (min-width: 641px) and (max-width: 1024px) { .responsive-bill { transform: scale(0.72); transform-origin: top center; } }
+                                        @media (min-width: 1025px) { .responsive-bill { transform: scale(0.85); transform-origin: top center; } }
+                                    }
+                                `}</style>
+                                <div className="responsive-bill shadow-md bg-white" style={{ margin: '0 auto' }} ref={printRef}>
+                                    <PrintableBill
+                                        customer={selectedCustomer}
+                                        items={viewBill.items}
+                                        subtotal={viewBill.subtotal}
+                                        previousBalance={viewBill.previousBalance}
+                                        previousFine={viewBill.previousFine}
+                                        totalPayable={viewBill.totalPayable}
+                                        cashPaid={viewBill.paymentBreakdown?.cashPaid || 0}
+                                        upiPaid={viewBill.paymentBreakdown?.upiPaid || 0}
+                                        bankPaid={viewBill.paymentBreakdown?.bankPaid || 0}
+                                        silverPayments={billSilverPayments}
+                                        remainingBalance={viewBill.remainingBalance}
+                                        billNumber={viewBill.billNumber}
+                                        billDate={viewBill.date}
+                                        silverRate={viewBill.silverRateUsed}
+                                        totalFineWeight={viewBill.totalFineWeight}
+                                    />
                                 </div>
                             </div>
-                        )}
 
-                        <div className="flex gap-3 pt-2">
-                            <button onClick={() => setShowAdjustment(false)} className="flex-1 border border-border py-2 rounded-md hover:bg-secondary text-sm">रद्द करा</button>
-                            <button onClick={handleAdjustment}
-                                disabled={adjSaving || !adjBillId || adjSilver.silverValue <= 0}
-                                className="flex-1 bg-amber-600 text-white py-2 rounded-md hover:bg-amber-700 font-medium text-sm disabled:opacity-50">
-                                {adjSaving ? 'जतन होत आहे...' : 'समायोजन जतन करा'}
-                            </button>
+                            {/* BOTTOM: Forms Container (Shows below bill on mobile) */}
+                            <div className="flex flex-col gap-6 w-full xl:w-[340px] shrink-0 xl:sticky xl:top-0 pb-10">
+                                {/* Left: Add Silver Payment Form */}
+                                <div className="border rounded-lg p-4 sm:p-5 bg-amber-50 shadow-sm flex flex-col gap-4">
+                                    <h3 className="font-bold flex items-center gap-2 text-amber-800 border-b border-amber-200 pb-2">
+                                        <Coins className="h-5 w-5" /> चांदी जमा करा
+                                    </h3>
+                                    <p className="text-xs text-amber-700 leading-tight">बिलाच्या फाइन वजनामध्ये चांदी जमा करण्यासाठी खालील माहिती भरा.</p>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">एकूण चांदी वजन (g) *</label>
+                                        <input type="number" min={0} value={addSilver.grossWeight || ''} onChange={e => setAddSilver({ ...addSilver, grossWeight: parseFloat(e.target.value) || 0 })} className="w-full border border-amber-300 p-2 rounded focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="उदा. 73.000" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">शुद्धता (%) *</label>
+                                        <input type="number" min={0} max={100} value={addSilver.purity || ''} onChange={e => setAddSilver({ ...addSilver, purity: parseFloat(e.target.value) || 0 })} className="w-full border border-amber-300 p-2 rounded focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="उदा. 75" />
+                                    </div>
+                                    <div className="bg-white border border-amber-200 rounded p-3 flex justify-between items-center">
+                                        <span className="text-sm font-bold text-gray-600">फाइन (g):</span>
+                                        <span className="text-lg font-black text-amber-600">{((addSilver.grossWeight * addSilver.purity) / 100).toFixed(3)} g</span>
+                                    </div>
+
+                                    <button
+                                        onClick={handleAddSilverPayment}
+                                        disabled={adjSaving || !addSilver.grossWeight || !addSilver.purity}
+                                        className="w-full bg-amber-600 text-white font-bold py-2.5 rounded-md hover:bg-amber-700 transition disabled:opacity-50 mt-2">
+                                        {adjSaving ? 'जतन करत आहे...' : 'चांदी पेमेंट जोडा'}
+                                    </button>
+                                </div>
+
+                                {/* Left: Add Rupee Payment Form */}
+                                <div className="w-full xl:w-[340px] border rounded-lg p-4 sm:p-5 bg-blue-50 shadow-sm shrink-0 flex flex-col gap-4">
+                                    <h3 className="font-bold flex items-center gap-2 text-blue-800 border-b border-blue-200 pb-2">
+                                        <CreditCard className="h-5 w-5" /> रोख पेमेंट जमा करा
+                                    </h3>
+                                    <p className="text-xs text-blue-700 leading-tight">बिलाच्या उधारीवर रोख रक्कम भरायची असल्यास खालील माहिती भरा.</p>
+
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-700 mb-1">रोख रक्कम (₹)</label>
+                                            <input type="number" min={0} value={addRupee.cash || ''} onChange={e => setAddRupee({ ...addRupee, cash: parseFloat(e.target.value) || 0 })} className="w-full border border-blue-300 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-700 mb-1">UPI रक्कम (₹)</label>
+                                            <input type="number" min={0} value={addRupee.upi || ''} onChange={e => setAddRupee({ ...addRupee, upi: parseFloat(e.target.value) || 0 })} className="w-full border border-blue-300 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0" />
+                                        </div>
+                                        <div className="bg-white border border-blue-200 rounded p-3 flex justify-between items-center">
+                                            <span className="text-sm font-bold text-gray-600">एकूण जमा (₹):</span>
+                                            <span className="text-lg font-black text-blue-700">{((addRupee.cash || 0) + (addRupee.upi || 0) + (addRupee.bank || 0)).toLocaleString('en-IN')}</span>
+                                        </div>
+
+                                        <button
+                                            onClick={handleAddRupeePayment}
+                                            disabled={rupeeSaving || ((addRupee.cash || 0) + (addRupee.upi || 0) + (addRupee.bank || 0)) <= 0}
+                                            className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-md hover:bg-blue-700 transition disabled:opacity-50 mt-2">
+                                            {rupeeSaving ? 'जतन करत आहे...' : 'पेमेंट जमा करा'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -502,6 +537,16 @@ const Ledger = () => {
                 </div>
             )}
 
+            {/* Actions Bar (when customer selected) */}
+            {selectedCustomer && (
+                <div className="flex justify-end gap-3">
+                    <a href={`/billing?customerId=${selectedCustomer._id}&customerName=${selectedCustomer.name}`}
+                        className="bg-primary text-white px-5 py-2.5 rounded-lg hover:bg-primary/90 transition shadow-sm font-bold flex items-center gap-2">
+                        <Plus className="h-5 w-5" /> प्लस नवीन बिल
+                    </a>
+                </div>
+            )}
+
             {/* Ledger Table */}
             {selectedCustomer && (
                 <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden">
@@ -540,6 +585,11 @@ const Ledger = () => {
                                                 </td>
                                                 <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px]">
                                                     <span className="line-clamp-2">{e.description}</span>
+                                                    {e.entryType === 'BILL' && e.refId && (
+                                                        <button onClick={() => openViewBill(e.refId)} className="mt-1 flex items-center gap-1 text-primary hover:text-primary/80 hover:underline font-semibold text-xs">
+                                                            👁️ बिल पहा (चांदी जमा करा)
+                                                        </button>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
                                                     {e.debit > 0 && (

@@ -1,15 +1,21 @@
 import Bill from '../models/Bill.js';
-import LedgerEntry from '../models/LedgerEntry.js';
 import Customer from '../models/Customer.js';
-import Inventory from '../models/Inventory.js';
+import Settings from '../models/Settings.js';
 
 export const getDailyReport = async (req, res) => {
     try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const lastDayStartSetting = await Settings.findOne({ key: 'lastDayStart' });
+
+        let startDate;
+        if (lastDayStartSetting) {
+            startDate = new Date(lastDayStartSetting.value);
+        } else {
+            startDate = new Date();
+            startDate.setHours(0, 0, 0, 0);
+        }
 
         const bills = await Bill.find({
-            date: { $gte: today }
+            date: { $gte: startDate }
         });
 
         const totalSales = bills.reduce((acc, bill) => acc + bill.totalPayable, 0);
@@ -23,11 +29,11 @@ export const getDailyReport = async (req, res) => {
         });
 
         const newCustomers = await Customer.countDocuments({
-            createdAt: { $gte: today }
+            createdAt: { $gte: startDate }
         });
 
         res.json({
-            date: today,
+            date: startDate,
             billsCount: bills.length,
             totalSales,
             totalSilverWeightSold,

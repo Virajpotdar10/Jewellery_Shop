@@ -4,6 +4,8 @@ import Customer from '../models/Customer.js';
 import LedgerEntry from '../models/LedgerEntry.js';
 import Inventory from '../models/Inventory.js';
 import Payment from '../models/Payment.js';
+import SilverRate from '../models/SilverRate.js';
+import fs from 'fs';
 
 /**
  * Helper: compute silver fine weight & value
@@ -31,39 +33,61 @@ const resolveMethod = (cashAmount, upiAmount, bankAmount, silverValue) => {
 };
 
 export const createBill = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    let session;
     try {
+        session = await mongoose.startSession();
+        session.startTransaction();
+
         const {
             customerId,
             items,
-            subtotal,
-            totalMakingCharges,
-            previousBalance,
-            totalPayable,
-            // Payment breakdown
+            previousBalance = 0,
+            previousFine = 0,
+            // Payment breakdown (rupee-based)
             cashAmount = 0,
             upiAmount = 0,
             bankAmount = 0,
-            // Silver payment at billing time (optional)
-            silverGrossWeight = 0,
-            silverPurity = 0,
-            silverRate = 0,
             notes = '',
         } = req.body;
 
-        // --- Silver calculation ---
-        const { fineWeight: silverFineWeight, silverValue } = calcSilver(
-            Number(silverGrossWeight), Number(silverPurity), Number(silverRate)
-        );
+        // 1. Fetch Today's Silver Rate
+        const latestRateObj = await SilverRate.findOne().sort({ createdAt: -1 }).session(session);
+        if (!latestRateObj) {
+            await session.abortTransaction();
+            return res.status(400).json({ message: 'आजचा चांदीचा दर सेट केलेला नाही. कृपया सेटिंगमध्ये दर भरा.' });
+        }
+        const silverRateUsed = latestRateObj.rate;
 
-        const paidAmount = parseFloat(
-            (Number(cashAmount) + Number(upiAmount) + Number(bankAmount) + silverValue).toFixed(2)
-        );
-        const remainingBalance = parseFloat((Number(totalPayable) - paidAmount).toFixed(2));
+        // 2. Process Items: Calculate Fine and Amount for each
+        let totalFineWeight = 0;
+        let billSubtotal = 0;
+        let totalMakingCharges = 0;
+
+        const processedItems = items.map(item => {
+            const weight = Number(item.weight) || 0;
+            const touch = Number(item.touch) || 0;
+            const makingChargeRate = Number(item.makingCharge) || 0;
+            const quantity = Number(item.quantity) || 1;
+
+            const fine = parseFloat(((weight * touch) / 100).toFixed(3));
+            const itemAmount = parseFloat((makingChargeRate * (weight / 1000)).toFixed(2));
+
+            totalFineWeight += fine;
+            billSubtotal += itemAmount;
+
+            return {
+                ...item,
+                fine,
+                amount: itemAmount
+            };
+        });
+
+        const totalPayable = parseFloat((billSubtotal + Number(previousBalance)).toFixed(2));
+        const paidAmount = parseFloat((Number(cashAmount) + Number(upiAmount) + Number(bankAmount)).toFixed(2));
+        const remainingBalance = parseFloat((totalPayable - paidAmount).toFixed(2));
 
         // Prevent overpayment
-        if (paidAmount > Number(totalPayable) + 0.01) {
+        if (paidAmount > totalPayable + 0.01) {
             await session.abortTransaction();
             return res.status(400).json({ message: 'पेमेंट एकूण देण्यापेक्षा जास्त असू शकत नाही.' });
         }
@@ -76,20 +100,17 @@ export const createBill = async (req, res) => {
             cashPaid: Number(cashAmount),
             upiPaid: Number(upiAmount),
             bankPaid: Number(bankAmount),
-            silverGrossWeight: Number(silverGrossWeight),
-            silverPurity: Number(silverPurity),
-            silverFineWeight,
-            silverRate: Number(silverRate),
-            silverValuePaid: silverValue,
         };
 
         const newBill = new Bill({
             billNumber: nextBillNumber,
             customerId,
-            items,
-            subtotal,
-            totalMakingCharges,
+            items: processedItems,
+            subtotal: billSubtotal,
             previousBalance,
+            previousFine,
+            silverRateUsed,
+            totalFineWeight,
             totalPayable,
             paymentBreakdown,
             paidAmount,
@@ -101,24 +122,37 @@ export const createBill = async (req, res) => {
         const createdBill = await newBill.save({ session });
 
         // --- Update Customer Balance ---
-        await Customer.findByIdAndUpdate(customerId, { currentBalance: remainingBalance }, { session });
+        const customer = await Customer.findById(customerId).session(session);
+        if (!customer) {
+            await session.abortTransaction();
+            return res.status(404).json({ message: 'ग्राहक सापडला नाही.' });
+        }
+
+        const oldFineBalance = Number(previousFine) || 0;
+        const newFineBalance = parseFloat((oldFineBalance + totalFineWeight).toFixed(3));
+
+        customer.currentBalance = remainingBalance;
+        customer.fineBalance = newFineBalance;
+        await customer.save({ session });
 
         // --- Ledger: BILL debit entry ---
-        const billAmount = Number(subtotal);  // new goods value (excluding prev balance)
-        let runningBalance = Number(previousBalance) + billAmount;
-
         const billLedger = new LedgerEntry({
             customerId,
             entryType: 'BILL',
             description: `बिल #${nextBillNumber}`,
-            debit: billAmount,
+            debit: billSubtotal,
             credit: 0,
-            balance: runningBalance,
+            balance: parseFloat((Number(previousBalance) + billSubtotal).toFixed(2)),
+            fineDebit: totalFineWeight,
+            fineCredit: 0,
+            fineBalance: newFineBalance,
             refId: createdBill._id,
             refModel: 'Bill',
             date: new Date(),
         });
         await billLedger.save({ session });
+
+        let runningBalance = parseFloat((Number(previousBalance) + billSubtotal).toFixed(2));
 
         // --- Ledger: payment credit entries ---
         if (Number(cashAmount) > 0) {
@@ -129,6 +163,7 @@ export const createBill = async (req, res) => {
                 description: `रोख पेमेंट — बिल #${nextBillNumber}`,
                 credit: Number(cashAmount),
                 balance: runningBalance,
+                fineBalance: newFineBalance,
                 refId: createdBill._id,
                 refModel: 'Bill',
                 date: new Date(),
@@ -142,6 +177,7 @@ export const createBill = async (req, res) => {
                 description: `UPI पेमेंट — बिल #${nextBillNumber}`,
                 credit: Number(upiAmount),
                 balance: runningBalance,
+                fineBalance: newFineBalance,
                 refId: createdBill._id,
                 refModel: 'Bill',
                 date: new Date(),
@@ -155,19 +191,7 @@ export const createBill = async (req, res) => {
                 description: `बँक पेमेंट — बिल #${nextBillNumber}`,
                 credit: Number(bankAmount),
                 balance: runningBalance,
-                refId: createdBill._id,
-                refModel: 'Bill',
-                date: new Date(),
-            }).save({ session });
-        }
-        if (silverValue > 0) {
-            runningBalance = parseFloat((runningBalance - silverValue).toFixed(2));
-            await new LedgerEntry({
-                customerId,
-                entryType: 'SILVER_PAYMENT',
-                description: `चांदी पेमेंट — ${silverFineWeight.toFixed(3)}g फाइन @ ₹${silverRate}/g — बिल #${nextBillNumber}`,
-                credit: silverValue,
-                balance: runningBalance,
+                fineBalance: newFineBalance,
                 refId: createdBill._id,
                 refModel: 'Bill',
                 date: new Date(),
@@ -175,21 +199,15 @@ export const createBill = async (req, res) => {
         }
 
         // --- Save Payment Record ---
-        const method = resolveMethod(Number(cashAmount), Number(upiAmount), Number(bankAmount), silverValue);
         if (paidAmount > 0) {
             await new Payment({
                 customerId,
                 billId: createdBill._id,
                 amount: paidAmount,
-                method,
+                method: resolveMethod(Number(cashAmount), Number(upiAmount), Number(bankAmount), 0),
                 cashAmount: Number(cashAmount),
                 upiAmount: Number(upiAmount),
                 bankAmount: Number(bankAmount),
-                silverGrossWeight: Number(silverGrossWeight),
-                silverPurity: Number(silverPurity),
-                silverFineWeight,
-                silverRate: Number(silverRate),
-                silverValue,
                 date: new Date(),
             }).save({ session });
         }
@@ -207,10 +225,26 @@ export const createBill = async (req, res) => {
         res.status(201).json(createdBill);
 
     } catch (error) {
-        await session.abortTransaction();
-        res.status(500).json({ message: error.message });
+        try {
+            if (session) await session.abortTransaction();
+        } catch (abortError) {
+            console.error('Abort failed:', abortError?.message);
+        }
+
+        try { fs.writeFileSync('last_error.txt', error.stack || error.message || String(error)); } catch (e) { }
+
+        console.error("BILL SAVE ERROR:", error);
+
+        let errMsg = "An unknown error occurred.";
+        if (error && error.message) errMsg = error.message;
+        else if (typeof error === 'string') errMsg = error;
+
+        return res.status(500).json({
+            message: errMsg,
+            stack: error?.stack || null
+        });
     } finally {
-        session.endSession();
+        if (session) session.endSession();
     }
 };
 

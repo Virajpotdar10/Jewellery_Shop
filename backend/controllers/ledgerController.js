@@ -6,7 +6,7 @@ export const getCustomerLedger = async (req, res) => {
         const entries = await LedgerEntry.find({ customerId: req.params.customerId })
             .sort({ date: 1, createdAt: 1 });
         const customer = await Customer.findById(req.params.customerId)
-            .select('name mobile currentBalance address');
+            .select('name mobile currentBalance fineBalance address');
         res.json({ customer, entries });
     } catch (error) {
         res.status(500).json({ message: error.message });

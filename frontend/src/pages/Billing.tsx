@@ -2,236 +2,64 @@ import { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import api from '../api';
 import { Plus, Trash2, Save, Search, Share2, X, Download, Coins } from 'lucide-react';
+import type { Customer, BillItem, PaymentMode, SilverPayment } from '../types';
+import { PrintableBill } from '../components/PrintableBill';
 
-// ─── Types ───
-interface Customer { _id: string; name: string; mobile: string; currentBalance: number; address?: string; }
-interface BillItem { description: string; quantity: number; weight: number; touch: number; fine: number; rate: number; makingCharge: number; amount: number; }
-interface SilverPayment { grossWeight: number; purity: number; fineWeight: number; silverRate: number; silverValue: number; }
-type PaymentMode = 'Cash' | 'UPI' | 'Bank' | 'Silver' | 'Mixed';
-
-const emptySilver = (): SilverPayment => ({ grossWeight: 0, purity: 0, fineWeight: 0, silverRate: 0, silverValue: 0 });
 const emptyItem = (): BillItem => ({ description: '', quantity: 1, weight: 0, touch: 0, fine: 0, rate: 0, makingCharge: 0, amount: 0 });
-const MODE_LABELS: Record<PaymentMode, string> = { Cash: 'रोख', UPI: 'UPI', Bank: 'बँक', Silver: 'चांदी', Mixed: 'मिश्र' };
+const MODE_LABELS: Record<PaymentMode, string> = { Cash: 'रोख', UPI: 'UPI', Bank: 'बँक', Mixed: 'मिश्र' };
 
-// ─── Silver sub-form (used for payment entry) ───
-const SilverPaymentFields = ({ silver, onChange, currentRate }: { silver: SilverPayment; onChange: (s: SilverPayment) => void; currentRate: number }) => {
+// ─── Silver sub-form (used for mixed payment entry) ───
+const SilverPaymentFields = ({ silver, onChange }: { silver: SilverPayment; onChange: (s: SilverPayment) => void }) => {
     const update = (field: keyof SilverPayment, value: number) => {
-        const next = { ...silver, [field]: value };
-        const gw = field === 'grossWeight' ? value : next.grossWeight;
-        const pur = field === 'purity' ? value : next.purity;
-        const rate = field === 'silverRate' ? value : next.silverRate;
-        next.fineWeight = parseFloat(((gw * pur) / 100).toFixed(4));
-        next.silverValue = parseFloat((next.fineWeight * rate).toFixed(2));
-        onChange(next);
+        const updatedSilver = { ...silver, [field]: value };
+        const gw = field === 'grossWeight' ? value : updatedSilver.grossWeight;
+        const pur = field === 'purity' ? value : updatedSilver.purity;
+        updatedSilver.fineWeight = parseFloat(((gw * pur) / 100).toFixed(3));
+        onChange(updatedSilver);
     };
     return (
-        <div className="mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg space-y-3">
-            <p className="text-sm font-semibold text-yellow-800 flex items-center gap-2"><Coins className="h-4 w-4" /> चांदी पेमेंट तपशील</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {[
-                    { label: 'एकूण वजन (ग्रॅम) *', field: 'grossWeight' as const, placeholder: '0' },
-                    { label: 'शुद्धता % *', field: 'purity' as const, placeholder: '80' },
-                ].map(({ label, field, placeholder }) => (
-                    <div key={field}>
-                        <label className="text-xs text-yellow-700 font-medium block mb-1">{label}</label>
-                        <input type="number" min={0} max={field === 'purity' ? 100 : undefined}
-                            value={(silver[field] as number) || ''}
-                            onChange={e => update(field, parseFloat(e.target.value) || 0)}
-                            className="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
-                            placeholder={placeholder} />
-                    </div>
-                ))}
+        <div className="mt-3 p-4 bg-gray-50 border-2 border-primary/20 rounded-lg space-y-4">
+            <p className="text-sm font-bold text-primary flex items-center gap-2">
+                <Coins className="h-4 w-4" /> चांदी पेमेंट विभाग (चांदी वजा)
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label className="text-xs text-yellow-700 font-medium block mb-1">फाइन वजन (g)</label>
-                    <input type="number" value={silver.fineWeight || ''} readOnly className="w-full border border-yellow-200 rounded px-2 py-1.5 text-sm bg-yellow-100 text-yellow-800 font-semibold" />
+                    <label className="text-xs font-bold text-gray-700 block mb-1">एकूण चांदी वजन (g) *</label>
+                    <input type="number" min={0}
+                        value={silver.grossWeight || ''}
+                        onChange={e => update('grossWeight', parseFloat(e.target.value) || 0)}
+                        className="w-full border-2 border-gray-300 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        placeholder="0.000" />
                 </div>
                 <div>
-                    <label className="text-xs text-yellow-700 font-medium block mb-1">चांदी दर ₹/g *</label>
-                    <input type="number" min={0} value={silver.silverRate || ''}
-                        onChange={e => update('silverRate', parseFloat(e.target.value) || 0)}
-                        onFocus={() => { if (!silver.silverRate && currentRate) update('silverRate', currentRate); }}
-                        className="w-full border border-yellow-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
-                        placeholder={String(currentRate)} />
+                    <label className="text-xs font-bold text-gray-700 block mb-1">शुद्धता (%) *</label>
+                    <input type="number" min={0} max={100}
+                        value={silver.purity || ''}
+                        onChange={e => update('purity', parseFloat(e.target.value) || 0)}
+                        className="w-full border-2 border-gray-300 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                        placeholder="80" />
+                </div>
+                <div>
+                    <label className="text-xs font-bold text-primary block mb-1">फाइन वजन (Fine g)</label>
+                    <input type="number" value={silver.fineWeight || ''} readOnly
+                        className="w-full border-2 border-primary/30 rounded px-3 py-2 text-sm bg-primary/5 text-primary font-bold" />
                 </div>
             </div>
-            <div className="flex items-center justify-between bg-yellow-100 border border-yellow-300 rounded px-3 py-2">
-                <span className="text-sm text-yellow-700 font-medium">चांदी मूल्य:</span>
-                <span className="text-lg font-bold text-yellow-900">₹{silver.silverValue.toFixed(2)}</span>
+            <div className="flex items-center justify-between bg-primary/10 border-2 border-primary/20 rounded px-4 py-2">
+                <span className="text-sm font-bold text-primary">चांदी वजा (g):</span>
+                <span className="text-xl font-black text-primary">{silver.fineWeight.toFixed(3)} g</span>
             </div>
         </div>
     );
 };
 
-// ═══════════════════════════════════════════════════
-//  PRINTABLE BILL — only this gets captured/printed
-// ═══════════════════════════════════════════════════
-const PrintableBill = ({
-    customer, items, subtotal, previousBalance, totalPayable,
-    cashPaid, upiPaid, bankPaid, silver, paymentMode, paidAmount, remainingBalance,
-    billNumber, billDate,
-}: {
-    customer: Customer | null; items: BillItem[]; subtotal: number;
-    previousBalance: number; totalPayable: number;
-    cashPaid: number; upiPaid: number; bankPaid: number;
-    silver: SilverPayment; paymentMode: PaymentMode;
-    paidAmount: number; remainingBalance: number;
-    billNumber?: number; billDate?: string;
-}) => {
-    const effectiveSilver = (paymentMode === 'Silver' || paymentMode === 'Mixed') ? silver.silverValue : 0;
-    const effectiveCash = (paymentMode === 'Cash' || paymentMode === 'Mixed') ? cashPaid : 0;
-    const effectiveUpi = (paymentMode === 'UPI' || paymentMode === 'Mixed') ? upiPaid : 0;
-    const effectiveBank = (paymentMode === 'Bank' || paymentMode === 'Mixed') ? bankPaid : 0;
 
-    // Landscape-style: compact cells, side-by-side bottom layout
-    const tdStyle: React.CSSProperties = { border: '1px solid #C62828', padding: '7px 9px', textAlign: 'right', fontSize: '14px', whiteSpace: 'nowrap' };
-    const thStyle: React.CSSProperties = { border: '1px solid #B71C1C', padding: '8px 9px', backgroundColor: '#C62828', color: '#fff', fontWeight: '700', fontSize: '13px', whiteSpace: 'nowrap' };
-
-    return (
-        <div style={{
-            fontFamily: "'Mukta', 'Noto Sans Devanagari', sans-serif",
-            backgroundColor: '#FFFDE7',
-            border: '3px solid #C62828',
-            borderRadius: '10px',
-            padding: '20px 24px',
-            // FIXED width — columns never collapse, always a landscape image
-            width: '920px',
-            minWidth: '920px',
-            boxSizing: 'border-box',
-        }}>
-            {/* Google font */}
-            <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700;800&display=swap');
-                @media print {
-                    @page { size: A4 landscape; margin: 8mm; }
-                }
-            `}</style>
-
-            {/* ── Header: 3-column (date | shop | bill no) ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', borderBottom: '2.5px solid #C62828', paddingBottom: '12px', marginBottom: '14px', gap: '12px' }}>
-                <div style={{ fontSize: '13px', color: '#777' }}>
-                    <div>दिनांक: <strong>{billDate || new Date().toLocaleDateString('mr-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div>
-                    {billNumber && <div style={{ color: '#C62828', fontWeight: '700', fontSize: '14px', marginTop: '2px' }}>बिल क्र. #{billNumber}</div>}
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                    <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#C62828', margin: '0 0 2px' }}>अलंकार ज्वेलर्स</h1>
-                    <p style={{ fontSize: '13px', color: '#666', margin: 0 }}>हुपरी, कोल्हापूर</p>
-                </div>
-                {/* Customer info — top right */}
-                <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontSize: '11px', color: '#888', margin: '0 0 1px' }}>ग्राहकाचे नाव</p>
-                    <p style={{ fontSize: '18px', fontWeight: '800', color: '#222', margin: 0 }}>{customer?.name || '—'}</p>
-                    {customer?.mobile && <p style={{ fontSize: '12px', color: '#555', margin: '1px 0 0' }}>📞 {customer.mobile}</p>}
-                    {previousBalance > 0 && (
-                        <p style={{ fontSize: '13px', fontWeight: '700', color: '#C62828', margin: '4px 0 0' }}>मागील थकबाकी: ₹{previousBalance.toLocaleString('en-IN')}</p>
-                    )}
-                </div>
-            </div>
-
-            {/* ── Items Table — full width, no overflow ── */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', tableLayout: 'fixed' }}>
-                <colgroup>
-                    <col style={{ width: '22%' }} /> {/* तपशील */}
-                    <col style={{ width: '5%' }} />  {/* नग */}
-                    <col style={{ width: '9%' }} />  {/* वजन */}
-                    <col style={{ width: '8%' }} />  {/* टंच% */}
-                    <col style={{ width: '10%' }} /> {/* फाइन */}
-                    <col style={{ width: '12%' }} /> {/* दर */}
-                    <col style={{ width: '12%' }} /> {/* मजुरी */}
-                    <col style={{ width: '14%' }} /> {/* रक्कम */}
-                    <col style={{ width: '8%' }} />  {/* एकूण label */}
-                </colgroup>
-                <thead>
-                    <tr>
-                        {['तपशील', 'नग', 'वजन (g)', 'टंच%', 'फाइन (g)', 'दर (₹)', 'मजुरी (₹)', 'रक्कम (₹)'].map((h, i) => (
-                            <th key={i} style={{ ...thStyle, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {items.filter(it => it.description || it.weight > 0).map((item, i) => (
-                        <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#FFFDE7' : '#FFF8E1' }}>
-                            <td style={{ ...tdStyle, textAlign: 'left', fontWeight: '700', fontSize: '15px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.description || '—'}</td>
-                            <td style={{ ...tdStyle, textAlign: 'center' }}>{item.quantity}</td>
-                            <td style={tdStyle}>{item.weight}</td>
-                            <td style={tdStyle}>{item.touch}</td>
-                            <td style={{ ...tdStyle, fontWeight: '700', color: '#C62828' }}>{item.fine.toFixed(3)}</td>
-                            <td style={tdStyle}>{item.rate}</td>
-                            <td style={tdStyle}>{item.makingCharge}</td>
-                            <td style={{ ...tdStyle, fontWeight: '800', fontSize: '15px', color: '#1a1a1a' }}>₹{item.amount.toFixed(2)}</td>
-                        </tr>
-                    ))}
-                    {/* Empty rows to pad short bills */}
-                    {items.filter(it => it.description || it.weight > 0).length < 3 &&
-                        Array.from({ length: 3 - items.filter(it => it.description || it.weight > 0).length }).map((_, i) => (
-                            <tr key={`empty-${i}`} style={{ backgroundColor: i % 2 === 0 ? '#FFFDE7' : '#FFF8E1' }}>
-                                {Array.from({ length: 8 }).map((_, j) => (
-                                    <td key={j} style={{ ...tdStyle, height: '34px', color: 'transparent' }}>—</td>
-                                ))}
-                            </tr>
-                        ))
-                    }
-                </tbody>
-                <tfoot>
-                    <tr style={{ backgroundColor: '#FFCCBC' }}>
-                        <td colSpan={7} style={{ ...tdStyle, textAlign: 'right', fontWeight: '700', fontSize: '14px', paddingRight: '16px' }}>एकूण वस्तू रक्कम →</td>
-                        <td style={{ ...tdStyle, fontWeight: '800', fontSize: '17px', color: '#C62828' }}>₹{subtotal.toFixed(2)}</td>
-                    </tr>
-                </tfoot>
-            </table>
-
-            {/* ── Bottom: Payment Summary ── */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <div style={{ minWidth: '320px', border: '2px solid #C62828', borderRadius: '10px', padding: '14px 18px', backgroundColor: '#FFF3E0' }}>
-                    <p style={{ textAlign: 'center', fontWeight: '800', color: '#C62828', fontSize: '14px', margin: '0 0 10px', letterSpacing: '0.5px' }}>💰 रक्कम तपशील</p>
-
-                    {[
-                        previousBalance > 0 ? { label: 'मागील थकबाकी:', val: `₹${previousBalance.toFixed(2)}`, color: '#C62828' } : null,
-                        { label: 'वस्तूंची रक्कम:', val: `₹${subtotal.toFixed(2)}`, color: '#333' },
-                    ].filter(Boolean).map((row, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: row!.color }}>
-                            <span>{row!.label}</span><strong>{row!.val}</strong>
-                        </div>
-                    ))}
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', borderTop: '1.5px solid #C62828', paddingTop: '7px', marginBottom: '8px', fontWeight: '800', color: '#C62828' }}>
-                        <span>एकूण देणे:</span><span>₹{totalPayable.toFixed(2)}</span>
-                    </div>
-
-                    {effectiveCash > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#2e7d32', marginBottom: '4px' }}><span>✓ रोख दिले:</span><strong>₹{effectiveCash.toFixed(2)}</strong></div>}
-                    {effectiveUpi > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#1565c0', marginBottom: '4px' }}><span>✓ UPI दिले:</span><strong>₹{effectiveUpi.toFixed(2)}</strong></div>}
-                    {effectiveBank > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6a1b9a', marginBottom: '4px' }}><span>✓ बँक दिले:</span><strong>₹{effectiveBank.toFixed(2)}</strong></div>}
-                    {effectiveSilver > 0 && (
-                        <div style={{ marginBottom: '4px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#e65100' }}><span>✓ चांदी दिली:</span><strong>₹{effectiveSilver.toFixed(2)}</strong></div>
-                            <div style={{ fontSize: '10px', color: '#999', textAlign: 'right' }}>{silver.grossWeight}g × {silver.purity}% = {silver.fineWeight.toFixed(3)}g × ₹{silver.silverRate}/g</div>
-                        </div>
-                    )}
-                    {paidAmount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', borderTop: '1px dashed #FFCCBC', paddingTop: '5px', marginTop: '4px', color: '#2e7d32' }}><span>एकूण दिले:</span><strong>₹{paidAmount.toFixed(2)}</strong></div>}
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '20px', borderTop: '2px solid #C62828', paddingTop: '9px', marginTop: '7px', fontWeight: '900', color: remainingBalance > 0 ? '#C62828' : '#2e7d32' }}>
-                        <span>शिल्लक:</span><span>₹{remainingBalance.toFixed(2)}</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* ── Footer ── */}
-            <div style={{ textAlign: 'center', borderTop: '1px dashed #C62828', paddingTop: '10px', marginTop: '16px', fontSize: '12px', color: '#aaa', display: 'flex', justifyContent: 'space-between' }}>
-                <span>🙏 धन्यवाद! पुन्हा भेट द्या.</span>
-                <span>अलंकार ज्वेलर्स — हुपरी, कोल्हापूर</span>
-            </div>
-        </div>
-    );
-};
-
-// ═══════════════════════════════════════════════════
-//  MAIN BILLING PAGE
-// ═══════════════════════════════════════════════════
 const Billing = () => {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [customerSearch, setCustomerSearch] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [showDropdown, setShowDropdown] = useState(false);
-    const [silverRatePerGram, setSilverRatePerGram] = useState(0);
+    const [silverRatePerKg, setSilverRatePerKg] = useState(0);
     const [items, setItems] = useState<BillItem[]>([emptyItem()]);
 
     // Payment
@@ -239,10 +67,11 @@ const Billing = () => {
     const [cashAmount, setCashAmount] = useState(0);
     const [upiAmount, setUpiAmount] = useState(0);
     const [bankAmount, setBankAmount] = useState(0);
-    const [silver, setSilver] = useState<SilverPayment>(emptySilver());
+    const [silver, setSilver] = useState<SilverPayment>({ grossWeight: 0, purity: 0, fineWeight: 0 });
 
-    // Optional manual previous balance (auto-fills from customer, editable)
+    // Optional manual previous balances (auto-fills from customer, editable)
     const [manualPrevBalance, setManualPrevBalance] = useState<string>('');
+    const [manualPrevFine, setManualPrevFine] = useState<string>('');
 
     const [saving, setSaving] = useState(false);
     const [savedBill, setSavedBill] = useState<any>(null);
@@ -260,21 +89,9 @@ const Billing = () => {
     // ── Fetch silver rate ──
     useEffect(() => {
         api.get('/silver-rates')
-            .then(r => setSilverRatePerGram(parseFloat(((r.data?.rate || 0) / 1000).toFixed(2))))
+            .then(r => setSilverRatePerKg(r.data?.rate || 0))
             .catch(() => { });
     }, []);
-
-    // Auto-fill silver rate when switching to Silver/Mixed mode
-    useEffect(() => {
-        if ((paymentMode === 'Silver' || paymentMode === 'Mixed') && silverRatePerGram > 0 && !silver.silverRate) {
-            setSilver(prev => {
-                const next = { ...prev, silverRate: silverRatePerGram };
-                next.fineWeight = parseFloat(((next.grossWeight * next.purity) / 100).toFixed(4));
-                next.silverValue = parseFloat((next.fineWeight * next.silverRate).toFixed(2));
-                return next;
-            });
-        }
-    }, [paymentMode, silverRatePerGram]);
 
     // ── Customer search ──
     useEffect(() => {
@@ -294,14 +111,15 @@ const Billing = () => {
         setShowAddCustomer(false);
         // Auto-fill previous balance from DB, user can override
         setManualPrevBalance(c.currentBalance > 0 ? String(c.currentBalance) : '');
+        setManualPrevFine(c.fineBalance > 0 ? String(c.fineBalance) : '');
     };
 
     const handleAddNewCustomer = async () => {
         if (!newCustomer.name) return;
         setAddingCustomer(true);
         try {
-            const res = await api.post('/customers', { ...newCustomer, currentBalance: 0 });
-            selectCustomer(res.data.customer || { ...res.data, currentBalance: 0 });
+            const res = await api.post('/customers', { ...newCustomer, currentBalance: 0, fineBalance: 0 });
+            selectCustomer(res.data.customer || { ...res.data, currentBalance: 0, fineBalance: 0 });
             setNewCustomer({ name: '', mobile: '', address: '' });
             setShowAddCustomer(false);
         } catch (e: any) { alert(e.response?.data?.message || 'ग्राहक जोडताना त्रुटी झाली.'); }
@@ -310,15 +128,16 @@ const Billing = () => {
 
     // ── Calculations ──
     const subtotal = items.reduce((s, i) => s + (i.amount || 0), 0);
-    const totalMakingCharges = items.reduce((s, i) => s + (i.makingCharge * i.weight || 0), 0);
-    // previousBalance: use manual override if set, otherwise 0 (not auto-pulled so bill stays clean)
+    const totalFineWeight = items.reduce((s, i) => s + (i.fine || 0), 0);
     const previousBalance = parseFloat(manualPrevBalance || '0') || 0;
+    const previousFine = parseFloat(manualPrevFine || '0') || 0;
     const totalPayable = subtotal + previousBalance;
     const effectiveCash = (paymentMode === 'Cash' || paymentMode === 'Mixed') ? cashAmount : 0;
     const effectiveUpi = (paymentMode === 'UPI' || paymentMode === 'Mixed') ? upiAmount : 0;
     const effectiveBank = (paymentMode === 'Bank' || paymentMode === 'Mixed') ? bankAmount : 0;
-    const effectiveSilver = (paymentMode === 'Silver' || paymentMode === 'Mixed') ? silver.silverValue : 0;
-    const paidAmount = parseFloat((effectiveCash + effectiveUpi + effectiveBank + effectiveSilver).toFixed(2));
+    const effectiveSilverWeight = (paymentMode === 'Mixed') ? silver.fineWeight : 0;
+
+    const paidAmount = parseFloat((effectiveCash + effectiveUpi + effectiveBank).toFixed(2));
     const remainingBalance = parseFloat((totalPayable - paidAmount).toFixed(2));
 
     // ── Item editing ──
@@ -327,20 +146,24 @@ const Billing = () => {
             const updated = [...prev];
             updated[i] = { ...updated[i], [field]: value };
             const item = updated[i];
-            if (field === 'weight' || field === 'touch') {
-                item.fine = parseFloat(((Number(item.weight) * Number(item.touch)) / 100).toFixed(3));
-            }
-            if (['fine', 'rate', 'makingCharge', 'weight', 'touch', 'quantity'].includes(field as string)) {
-                item.amount = parseFloat(((item.fine * item.rate) + (item.makingCharge * item.weight)).toFixed(2));
-            }
+
+            // Auto Calculations
+            const weight = Number(item.weight) || 0;
+            const touch = Number(item.touch) || 0;
+            const makingChargeRate = Number(item.makingCharge) || 0;
+
+            item.fine = parseFloat(((weight * touch) / 100).toFixed(3));
+            item.amount = parseFloat((makingChargeRate * (weight / 1000)).toFixed(2));
+
             return updated;
         });
     };
 
     const resetForm = () => {
         setItems([emptyItem()]); setCashAmount(0); setUpiAmount(0); setBankAmount(0);
-        setSilver(emptySilver()); setPaymentMode('Cash'); setSelectedCustomer(null);
-        setCustomerSearch(''); setManualPrevBalance('');
+        setSilver({ grossWeight: 0, purity: 0, fineWeight: 0 });
+        setPaymentMode('Cash'); setSelectedCustomer(null);
+        setCustomerSearch(''); setManualPrevBalance(''); setManualPrevFine('');
     };
 
     // ── Save Bill ──
@@ -349,20 +172,40 @@ const Billing = () => {
         const validItems = items.filter(i => i.description && i.weight > 0);
         if (!validItems.length) return alert('कृपया किमान एक वस्तू जोडा.');
         if (paidAmount > totalPayable + 0.01) return alert('पेमेंट एकूण देण्यापेक्षा जास्त असू शकत नाही.');
+
         setSaving(true);
         try {
-            const res = await api.post('/bills', {
+            // 1. Create the Bill
+            const payload = {
                 customerId: selectedCustomer._id,
-                items: validItems, subtotal, totalMakingCharges, previousBalance, totalPayable,
-                cashAmount: effectiveCash, upiAmount: effectiveUpi, bankAmount: effectiveBank,
-                silverGrossWeight: effectiveSilver > 0 ? silver.grossWeight : 0,
-                silverPurity: effectiveSilver > 0 ? silver.purity : 0,
-                silverRate: effectiveSilver > 0 ? silver.silverRate : 0,
-            });
-            setSavedBill(res.data);
-            alert(`बिल #${res.data.billNumber} यशस्वीरित्या जतन केले!`);
+                items: validItems,
+                subtotal,
+                previousBalance,
+                previousFine,
+                totalPayable,
+                cashAmount: effectiveCash,
+                upiAmount: effectiveUpi,
+                bankAmount: effectiveBank
+            };
+            const createdBill = await api.post('/bills', payload);
+            const bill = createdBill.data.bill || createdBill.data;
+
+            // 2. Handle Silver Deduction if applicable
+            if (effectiveSilverWeight > 0 && bill && bill._id) {
+                await api.post('/silver-payments', {
+                    customerId: selectedCustomer._id,
+                    billId: bill._id,
+                    grossWeight: silver.grossWeight,
+                    purity: silver.purity,
+                    notes: 'बिले सोबत चांदी पेमेंट (Mixed Mode)'
+                });
+            }
+
+            setSavedBill(bill);
+            alert(`बिल #${bill.billNumber} यशस्वीरित्या जतन केले!`);
             resetForm();
         } catch (e: any) {
+            console.error("Save error:", e);
             alert(e.response?.data?.message || 'बिल जतन करताना त्रुटी झाली.');
         }
         setSaving(false);
@@ -414,16 +257,17 @@ const Billing = () => {
         setSharing(false);
     };
 
-    const MODES: PaymentMode[] = ['Cash', 'UPI', 'Bank', 'Silver', 'Mixed'];
+    const MODES: PaymentMode[] = ['Cash', 'UPI', 'Bank', 'Mixed'];
 
     // ─────────────────────────────────────────────
     // Shared bill props
     // ─────────────────────────────────────────────
     const billProps = {
-        customer: selectedCustomer, items, subtotal, previousBalance, totalPayable,
+        customer: selectedCustomer, items, subtotal, previousBalance, previousFine, totalPayable,
         cashPaid: effectiveCash, upiPaid: effectiveUpi, bankPaid: effectiveBank,
-        silver, paymentMode, paidAmount, remainingBalance,
+        silverPayments: effectiveSilverWeight > 0 ? [silver] : [], paymentMode, paidAmount, remainingBalance,
         billNumber: savedBill?.billNumber, billDate: savedBill?.date,
+        silverRate: silverRatePerKg, totalFineWeight
     };
 
     return (
@@ -531,23 +375,29 @@ const Billing = () => {
                             <input value={selectedCustomer?.mobile || ''} readOnly
                                 className="w-full border border-border rounded-md px-3 py-2 bg-secondary/30 text-muted-foreground text-sm" />
                         </div>
-                        <div>
-                            <label className="block text-sm font-semibold mb-1 text-gray-700">
-                                मागील रक्कम देणे (₹)
-                                <span className="text-xs font-normal text-muted-foreground ml-1">— भरल्यास बिलात दिसेल</span>
-                            </label>
-                            <input
-                                type="number" min={0}
-                                value={manualPrevBalance}
-                                onChange={e => setManualPrevBalance(e.target.value)}
-                                placeholder="0 (रिकामे ठेवल्यास दिसणार नाही)"
-                                className="w-full border-2 border-orange-300 focus:border-orange-500 rounded-md px-3 py-2 text-sm focus:outline-none" />
-                            {selectedCustomer && selectedCustomer.currentBalance > 0 && !manualPrevBalance && (
-                                <button onClick={() => setManualPrevBalance(String(selectedCustomer.currentBalance))}
-                                    className="text-xs text-orange-600 mt-1 underline hover:no-underline">
-                                    DB मधील थकबाकी वापरा: ₹{selectedCustomer.currentBalance.toLocaleString('en-IN')}
-                                </button>
-                            )}
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-sm font-semibold mb-1 text-gray-700 text-xs">
+                                    मागील थकबाकी (₹) <span className="font-normal text-muted-foreground ml-1">(देणे)</span>
+                                </label>
+                                <input
+                                    type="number" min={0}
+                                    value={manualPrevBalance}
+                                    onChange={e => setManualPrevBalance(e.target.value)}
+                                    placeholder="0"
+                                    className="w-full border-2 border-orange-300 focus:border-orange-500 rounded-md px-3 py-1.5 text-sm focus:outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold mb-1 text-gray-700 text-xs">
+                                    मागील फाइन (g) <span className="font-normal text-muted-foreground ml-1">(येणे)</span>
+                                </label>
+                                <input
+                                    type="number" min={0}
+                                    value={manualPrevFine}
+                                    onChange={e => setManualPrevFine(e.target.value)}
+                                    placeholder="0"
+                                    className="w-full border-2 border-blue-300 focus:border-blue-500 rounded-md px-3 py-1.5 text-sm focus:outline-none" />
+                            </div>
                         </div>
                     </div>
 
@@ -600,18 +450,11 @@ const Billing = () => {
                                     </div>
                                 </div>
 
-                                {/* दर + मजुरी */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1">दर (₹/g)</label>
-                                        <input type="number" value={item.rate || ''} onChange={e => updateItem(i, 'rate', parseFloat(e.target.value) || 0)}
-                                            className="w-full border-2 border-gray-200 focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none text-right" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold text-gray-600 mb-1">मजुरी (₹/g)</label>
-                                        <input type="number" value={item.makingCharge || ''} onChange={e => updateItem(i, 'makingCharge', parseFloat(e.target.value) || 0)}
-                                            className="w-full border-2 border-gray-200 focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none text-right" />
-                                    </div>
+                                {/* मजुरी */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">मजुरी (₹/g)</label>
+                                    <input type="number" value={item.makingCharge || ''} onChange={e => updateItem(i, 'makingCharge', parseFloat(e.target.value) || 0)}
+                                        className="w-full border-2 border-gray-200 focus:border-primary rounded-md px-3 py-2 text-sm focus:outline-none text-right" />
                                 </div>
 
                                 {/* रक्कम — full width, prominent */}
@@ -628,7 +471,7 @@ const Billing = () => {
                         <table className="w-full text-xs md:text-sm border-2 border-primary min-w-[700px]">
                             <thead>
                                 <tr className="bg-primary/10">
-                                    {['तपशील', 'नग', 'वजन', 'टंच%', 'फाइन', 'दर₹', 'मजुरी₹', 'रक्कम₹', ''].map(h => (
+                                    {['तपशील', 'नग', 'वजन', 'टंच%', 'फाइन', 'मजुरी₹', 'रक्कम₹', ''].map(h => (
                                         <th key={h} className="border border-primary/40 px-2 py-2 text-center text-primary font-semibold whitespace-nowrap">{h}</th>
                                     ))}
                                 </tr>
@@ -640,7 +483,7 @@ const Billing = () => {
                                             <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)}
                                                 className="w-full px-2 py-1 focus:outline-none min-w-[100px] text-sm" placeholder="नाव" />
                                         </td>
-                                        {(['quantity', 'weight', 'touch', 'fine', 'rate', 'makingCharge', 'amount'] as (keyof BillItem)[]).map(field => (
+                                        {(['quantity', 'weight', 'touch', 'fine', 'makingCharge', 'amount'] as (keyof BillItem)[]).map(field => (
                                             <td key={field} className="border border-primary/30 p-1">
                                                 <input type="number"
                                                     value={(item[field] as number) || ''}
@@ -702,8 +545,8 @@ const Billing = () => {
                                     className="border-2 border-purple-300 rounded px-3 py-1.5 text-sm w-40 focus:outline-none focus:border-purple-500" placeholder="0" />
                             </div>
                         )}
-                        {(paymentMode === 'Silver' || paymentMode === 'Mixed') && (
-                            <SilverPaymentFields silver={silver} onChange={setSilver} currentRate={silverRatePerGram} />
+                        {paymentMode === 'Mixed' && (
+                            <SilverPaymentFields silver={silver} onChange={setSilver} />
                         )}
                     </div>
 

@@ -1,0 +1,15 @@
+{
+    "short_name": "Jewellery",
+    "name": "Jewellery Shop Management",
+    "icons": [
+        {
+            "src": "logo.png",
+            "sizes": "192x192 512x512",
+            "type": "image/png"
+        }
+    ],
+    "start_url": ".",
+    "display": "standalone",
+    "theme_color": "#C62828",
+    "background_color": "#FFFDE7"
+}

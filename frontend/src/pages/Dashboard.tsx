@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { TrendingUp, Users, AlertCircle, Package, Plus, BookOpen, RefreshCw } from 'lucide-react';
+import { TrendingUp, Users, AlertCircle, Plus, BookOpen, RefreshCw, Sun } from 'lucide-react';
 
 interface SilverRate {
     rate: number;
@@ -33,6 +33,14 @@ const Dashboard = () => {
     const [silverRate, setSilverRate] = useState<SilverRate | null>(null);
     const [report, setReport] = useState<DailyReport | null>(null);
     const [manualRate, setManualRate] = useState('');
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
     const fetchData = async () => {
         try {
             const [rateRes, reportRes] = await Promise.all([
@@ -58,19 +66,51 @@ const Dashboard = () => {
         }
     };
 
+    const handleNewDay = async () => {
+        const confirm = window.confirm('तुम्हाला नवीन दिवसाची सुरुवात करायची आहे का? यामुळे आजचे रिपोर्ट शून्य (0) होतील.');
+        if (!confirm) return;
+
+        try {
+            await api.post('/settings', {
+                key: 'lastDayStart',
+                value: new Date().toISOString()
+            });
+            fetchData();
+            // Focus the manual rate input to start the day
+            const rateInput = document.querySelector('input[placeholder="नवीन दर टाका"]') as HTMLInputElement;
+            if (rateInput) {
+                rateInput.focus();
+                rateInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            alert('नवीन दिवसाची सुरुवात झाली आहे!');
+        } catch (e) {
+            alert('दिवस रिसेट करताना त्रुटी आली.');
+        }
+    };
+
     return (
         <div className="space-y-8">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
                 <div>
                     <h1 className="text-3xl font-bold text-foreground">डॅशबोर्ड</h1>
-                    <p className="text-muted-foreground mt-1">
-                        {new Date().toLocaleDateString('mr-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    </p>
                 </div>
-                <button onClick={fetchData} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    <RefreshCw className="h-4 w-4" /> रिफ्रेश करा
-                </button>
+                <div className="flex items-center gap-4">
+                    <div className="text-right mr-2 hidden sm:block">
+                        <p className="text-xs text-muted-foreground">
+                            {currentTime.toLocaleDateString('mr-IN', { weekday: 'short', day: '2-digit', month: 'short' })}
+                        </p>
+                        <p className="text-sm font-bold text-primary">
+                            {currentTime.toLocaleTimeString('mr-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </p>
+                    </div>
+                    <button onClick={handleNewDay} className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors font-semibold bg-primary/5 px-3 py-2 rounded-lg border border-primary/20">
+                        <Sun className="h-4 w-4" /> नवीन दिवस
+                    </button>
+                    <button onClick={fetchData} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                        <RefreshCw className="h-4 w-4" /> रिफ्रेश करा
+                    </button>
+                </div>
             </div>
 
             {/* Silver Rate Card */}
@@ -107,19 +147,13 @@ const Dashboard = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <StatCard
                     title="आजची एकूण विक्री"
                     value={report ? `₹${report.totalSales.toLocaleString('en-IN')}` : '₹0'}
                     icon={TrendingUp}
                     color="bg-green-500"
                     subtitle={`${report?.billsCount || 0} बिले`}
-                />
-                <StatCard
-                    title="चांदी वजन विकले"
-                    value={report ? `${report.totalSilverWeightSold.toFixed(2)} ग्राम` : '0 ग्राम'}
-                    icon={Package}
-                    color="bg-blue-500"
                 />
                 <StatCard
                     title="नवीन ग्राहक"

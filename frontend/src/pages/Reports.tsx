@@ -44,7 +44,6 @@ const Reports = () => {
                             {[
                                 { label: 'एकूण विक्री', value: `₹${daily?.totalSales?.toLocaleString('en-IN') || 0}`, color: 'bg-green-50 border-green-200 text-green-700' },
                                 { label: 'एकूण बिले', value: daily?.billsCount || 0, color: 'bg-blue-50 border-blue-200 text-blue-700' },
-                                { label: 'चांदी वजन विकले', value: `${daily?.totalSilverWeightSold?.toFixed(2) || 0} gm`, color: 'bg-purple-50 border-purple-200 text-purple-700' },
                                 { label: 'नवीन ग्राहक', value: daily?.newCustomers || 0, color: 'bg-orange-50 border-orange-200 text-orange-700' },
                             ].map(item => (
                                 <div key={item.label} className={`rounded-lg border p-4 ${item.color}`}>

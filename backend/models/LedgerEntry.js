@@ -7,6 +7,7 @@ const ENTRY_TYPES = [
     'BANK_PAYMENT',
     'SILVER_PAYMENT',
     'SILVER_ADJUSTMENT',
+    'SILVER_FINE_PAYMENT',
     'MANUAL_CREDIT',
     'MANUAL_DEBIT',
 ];
@@ -43,13 +44,25 @@ const ledgerEntrySchema = new mongoose.Schema({
         type: Number,
         required: true,
     },
+    fineCredit: {
+        type: Number,
+        default: 0,
+    },
+    fineDebit: {
+        type: Number,
+        default: 0,
+    },
+    fineBalance: {
+        type: Number,
+        default: 0,
+    },
     refId: {
         type: mongoose.Schema.Types.ObjectId,
         default: null,
     },
     refModel: {
         type: String,
-        enum: ['Bill', 'Payment', 'SilverAdjustment', null],
+        enum: ['Bill', 'Payment', 'SilverAdjustment', 'SilverPayment', null],
         default: null,
     },
 }, { timestamps: true });

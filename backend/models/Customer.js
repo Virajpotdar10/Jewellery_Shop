@@ -17,6 +17,10 @@ const customerSchema = new mongoose.Schema({
     currentBalance: {
         type: Number,
         default: 0
+    },
+    fineBalance: {
+        type: Number,
+        default: 0
     }
 }, { timestamps: true });
 

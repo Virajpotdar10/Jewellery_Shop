@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
-import { Home, FileText, BookOpen, Diamond, LogOut, Package, Users, Menu, X } from 'lucide-react';
+import { Home, FileText, BookOpen, Diamond, LogOut, Users, Menu, X } from 'lucide-react';
 
 const Layout = () => {
     const { user, logout } = useAuthStore();
@@ -18,7 +18,6 @@ const Layout = () => {
         { name: 'नवीन बिल', path: '/billing', icon: FileText },
         { name: 'ग्राहक', path: '/customers', icon: Users },
         { name: 'खातेवही (Ledger)', path: '/ledger', icon: BookOpen },
-        { name: 'स्टॉक (Inventory)', path: '/inventory', icon: Package },
         { name: 'अहवाल (Reports)', path: '/reports', icon: Diamond },
     ];
 
@@ -30,8 +29,8 @@ const Layout = () => {
                 to={item.path}
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${isActive
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-foreground/70 hover:bg-secondary hover:text-foreground'
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-foreground/70 hover:bg-secondary hover:text-foreground'
                     }`}
             >
                 <Icon className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />

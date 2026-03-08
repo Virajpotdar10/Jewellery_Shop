@@ -235,15 +235,15 @@ const Customers = () => {
                                     <td className="px-4 py-3">
                                         <div className="flex items-center justify-center gap-2">
                                             <a href={`/ledger?customerId=${c._id}&customerName=${c.name}`}
-                                                className="text-primary hover:underline text-xs font-medium px-2 py-1 rounded hover:bg-primary/10 transition-colors">
+                                                className="text-primary hover:underline text-xs font-medium px-2 py-1.5 rounded-md hover:bg-primary/10 transition-colors">
                                                 खाते पहा
                                             </a>
                                             <button
                                                 onClick={() => setDeleteTarget(c)}
                                                 title="ग्राहक हटवा"
-                                                className="p-1.5 rounded-md text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors border border-red-200 hover:border-red-400"
+                                                className="p-1.5 rounded-md text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors border border-transparent hover:border-red-200"
                                             >
-                                                <Trash2 className="h-3.5 w-3.5" />
+                                                <Trash2 className="h-4 w-4" />
                                             </button>
                                         </div>
                                     </td>
