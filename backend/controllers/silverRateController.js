@@ -44,11 +44,11 @@ export const getSilverRateHistory = async (req, res) => {
 }
 
 // Auto Fetch Cron Job
-// Fetch live rate every 30 minutes
+// Fetch live rate every 5 minutes (Hupari Maharashtra market)
 export const startCronJob = () => {
-    cron.schedule('*/30 * * * *', async () => {
+    cron.schedule('*/5 * * * *', async () => {
         try {
-            console.log('Running Auto Fetch Silver Rate...');
+            console.log('Running Auto Fetch Silver Rate (Hupari Maharashtra)...');
             // Ideally replace this with a real live Indian bullion API
             // Using a dummy/placeholder or free API representation here
             // We will simulate the fetch if no free API is reliable for Hupari.
@@ -63,7 +63,7 @@ export const startCronJob = () => {
 
             const newRate = new SilverRate({
                 rate: fetchedRate,
-                source: 'API'
+                source: 'API' // or 'Auto (Hupari Demo)'
             });
 
             await newRate.save();

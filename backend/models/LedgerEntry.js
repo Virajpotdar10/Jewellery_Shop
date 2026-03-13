@@ -67,6 +67,8 @@ const ledgerEntrySchema = new mongoose.Schema({
     },
 }, { timestamps: true });
 
+ledgerEntrySchema.index({ customerId: 1, date: -1 });
+
 const LedgerEntry = mongoose.model('LedgerEntry', ledgerEntrySchema);
 export { ENTRY_TYPES };
 export default LedgerEntry;

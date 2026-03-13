@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import compression from 'compression';
 
 dotenv.config();
 
@@ -10,6 +11,7 @@ import settingsRoutes from './routes/settingsRoutes.js';
 const app = express();
 
 app.use(cors());
+app.use(compression());
 app.use(express.json());
 
 app.use('/api/settings', settingsRoutes);
@@ -17,8 +19,8 @@ app.use('/api/settings', settingsRoutes);
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/jewellery-shop-db';
 
-mongoose.connect(MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
+mongoose.connect(MONGODB_URI, { maxPoolSize: 50 })
+    .then(() => console.log('Connected to MongoDB (PoolSize: 50)'))
     .catch((err) => console.error('MongoDB connection error:', err));
 
 import authRoutes from './routes/authRoutes.js';

@@ -203,7 +203,7 @@ const Billing = () => {
 
             setSavedBill(bill);
             alert(`बिल #${bill.billNumber} यशस्वीरित्या जतन केले!`);
-            resetForm();
+            // resetForm(); // Do not clear the form automatically
         } catch (e: any) {
             console.error("Save error:", e);
             alert(e.response?.data?.message || 'बिल जतन करताना त्रुटी झाली.');
@@ -228,8 +228,6 @@ const Billing = () => {
         } catch (e) { console.error(e); }
         setDownloading(false);
     };
-
-    // ── WhatsApp Share — captures ONLY the clean bill ──
     const handleShareWhatsApp = async () => {
         if (!printRef.current) return;
         setSharing(true);
@@ -248,8 +246,16 @@ const Billing = () => {
                     URL.revokeObjectURL(url);
                     setTimeout(() => {
                         const phone = selectedCustomer?.mobile?.replace(/\D/g, '');
-                        if (phone) window.open(`https://wa.me/91${phone}?text=नमस्कार,%20बिल+पाठवत+आहे+📄`, '_blank');
-                        else window.open('https://web.whatsapp.com', '_blank');
+                        const text = "नमस्कार,%20बिल+पाठवत+आहे+📄";
+                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+                        if (isMobile) {
+                            if (phone) window.location.href = `whatsapp://send?phone=91${phone}&text=${text}`;
+                            else window.location.href = `whatsapp://send?text=${text}`;
+                        } else {
+                            if (phone) window.open(`https://web.whatsapp.com/send?phone=91${phone}&text=${text}`, '_blank');
+                            else window.open(`https://web.whatsapp.com/send?text=${text}`, '_blank');
+                        }
                     }, 1200);
                 }
             }, 'image/png');
@@ -259,9 +265,6 @@ const Billing = () => {
 
     const MODES: PaymentMode[] = ['Cash', 'UPI', 'Bank', 'Mixed'];
 
-    // ─────────────────────────────────────────────
-    // Shared bill props
-    // ─────────────────────────────────────────────
     const billProps = {
         customer: selectedCustomer, items, subtotal, previousBalance, previousFine, totalPayable,
         cashPaid: effectiveCash, upiPaid: effectiveUpi, bankPaid: effectiveBank,
@@ -272,16 +275,17 @@ const Billing = () => {
 
     return (
         <div className="space-y-4 md:space-y-6">
-
-            {/* ══════════════════════════════════════
-                TOP ACTION BAR
-            ══════════════════════════════════════ */}
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold text-foreground">नवीन बिल</h1>
                     <p className="text-muted-foreground text-sm">New Bill Entry</p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
+                    <button onClick={resetForm}
+                        className="flex items-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border px-3 py-2 rounded-md transition-colors text-sm font-medium">
+                        <Plus className="h-4 w-4" />
+                        नवीन बिल
+                    </button>
                     <button onClick={handleShareWhatsApp} disabled={sharing}
                         className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-md transition-colors text-sm font-medium">
                         <Share2 className="h-4 w-4" />
@@ -300,15 +304,12 @@ const Billing = () => {
                 </div>
             </div>
 
-            {/* ══════════════════════════════════════
-                ENTRY FORM (never captured/printed)
-            ══════════════════════════════════════ */}
             <div className="bg-white rounded-lg border border-border shadow-sm p-4 md:p-6 space-y-5">
 
                 {/* Customer Selection */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-sm font-semibold mb-1 text-gray-700">ग्राहकाचे / सोनाराचे नाव *</label>
+                        <label className="block text-sm font-semibold mb-1 text-gray-700">ग्राहकाचे नाव *</label>
                         <div className="relative">
                             <div className="flex items-center border-2 border-gray-300 rounded-md focus-within:border-primary">
                                 <Search className="h-4 w-4 text-gray-400 ml-3 flex-shrink-0" />
@@ -378,7 +379,7 @@ const Billing = () => {
                         <div className="grid grid-cols-2 gap-2">
                             <div>
                                 <label className="block text-sm font-semibold mb-1 text-gray-700 text-xs">
-                                    मागील थकबाकी (₹) <span className="font-normal text-muted-foreground ml-1">(देणे)</span>
+                                    मागील बाकी (₹) <span className="font-normal text-muted-foreground ml-1">(देणे)</span>
                                 </label>
                                 <input
                                     type="number" min={0}
@@ -562,12 +563,8 @@ const Billing = () => {
                     </div>
                 </div>
 
-                {/* ══════════════════════════════════════
-                CLEAN BILL PREVIEW — always 920px wide
-                horizontal scroll on mobile
-            ══════════════════════════════════════ */}
                 <div>
-                    <p className="text-xs text-muted-foreground mb-2 text-center">↓ बिल पूर्वावलोकन — WhatsApp साठी हेच पाठवले जाईल</p>
+                    <p className="text-xs text-muted-foreground mb-2 text-center">WhatsApp Bill Preview</p>
                     {/* Scroll wrapper on mobile so user can see the full bill */}
                     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                         <div ref={printRef} style={{ display: 'inline-block' }}>

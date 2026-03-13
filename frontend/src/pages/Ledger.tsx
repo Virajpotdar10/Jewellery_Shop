@@ -98,8 +98,16 @@ const Ledger = () => {
 
                     setTimeout(() => {
                         const phone = selectedCustomer.mobile?.replace(/\D/g, '');
-                        if (phone) window.open(`https://wa.me/91${phone}?text=नमस्कार,%20बिल+पाठवत+आहे+📄`, '_blank');
-                        else window.open('https://web.whatsapp.com', '_blank');
+                        const text = "नमस्कार,%20बिल+पाठवत+आहे+📄";
+                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+                        if (isMobile) {
+                            if (phone) window.location.href = `whatsapp://send?phone=91${phone}&text=${text}`;
+                            else window.location.href = `whatsapp://send?text=${text}`;
+                        } else {
+                            if (phone) window.open(`https://web.whatsapp.com/send?phone=91${phone}&text=${text}`, '_blank');
+                            else window.open(`https://web.whatsapp.com/send?text=${text}`, '_blank');
+                        }
                     }, 1200);
                 }
             }, 'image/png');
@@ -361,18 +369,10 @@ const Ledger = () => {
                             {/* TOP: Printable Bill Preview (Shows at TOP on mobile) */}
                             <div className="w-full xl:flex-1 overflow-x-auto bg-gray-50 p-2 sm:p-4 rounded-lg flex justify-center border border-dashed border-gray-300 min-h-[300px]">
                                 <style>{`
-                                    @media (max-width: 480px) { .responsive-bill { zoom: 0.58; transform: scale(0.58); transform-origin: top center; } }
-                                    @media (min-width: 481px) and (max-width: 640px) { .responsive-bill { zoom: 0.65; } }
-                                    @media (min-width: 641px) and (max-width: 1024px) { .responsive-bill { zoom: 0.72; } }
+                                    @media (max-width: 480px) { .responsive-bill { zoom: 0.35; } }
+                                    @media (min-width: 481px) and (max-width: 640px) { .responsive-bill { zoom: 0.50; } }
+                                    @media (min-width: 641px) and (max-width: 1024px) { .responsive-bill { zoom: 0.70; } }
                                     @media (min-width: 1025px) { .responsive-bill { zoom: 0.85; } }
-                                    
-                                    /* Firefox fallback for zoom */
-                                    @-moz-document url-prefix() {
-                                        @media (max-width: 480px) { .responsive-bill { transform: scale(0.58); transform-origin: top center; } }
-                                        @media (min-width: 481px) and (max-width: 640px) { .responsive-bill { transform: scale(0.65); transform-origin: top center; } }
-                                        @media (min-width: 641px) and (max-width: 1024px) { .responsive-bill { transform: scale(0.72); transform-origin: top center; } }
-                                        @media (min-width: 1025px) { .responsive-bill { transform: scale(0.85); transform-origin: top center; } }
-                                    }
                                 `}</style>
                                 <div className="responsive-bill shadow-md bg-white" style={{ margin: '0 auto' }} ref={printRef}>
                                     <PrintableBill

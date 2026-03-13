@@ -1,14 +1,17 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Billing from './pages/Billing';
-import Customers from './pages/Customers';
-import Ledger from './pages/Ledger';
-import Reports from './pages/Reports';
 import Layout from './components/layout/Layout';
 import SplashScreen from './components/common/SplashScreen';
 import { useAuthStore } from './store/authStore';
-import { useEffect, useState } from 'react';
+
+// Lazy loaded routes
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Billing = lazy(() => import('./pages/Billing'));
+const Customers = lazy(() => import('./pages/Customers'));
+const Ledger = lazy(() => import('./pages/Ledger'));
+const Reports = lazy(() => import('./pages/Reports'));
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = useAuthStore((state) => state.token);
@@ -35,21 +38,23 @@ function App() {
 
   return (
     <Router>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+      <Suspense fallback={<SplashScreen />}>
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }>
-          <Route index element={<Dashboard />} />
-          <Route path="billing" element={<Billing />} />
-          <Route path="customers" element={<Customers />} />
-          <Route path="ledger" element={<Ledger />} />
-          <Route path="reports" element={<Reports />} />
-        </Route>
-      </Routes>
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<Dashboard />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="customers" element={<Customers />} />
+            <Route path="ledger" element={<Ledger />} />
+            <Route path="reports" element={<Reports />} />
+          </Route>
+        </Routes>
+      </Suspense>
     </Router>
   );
 }

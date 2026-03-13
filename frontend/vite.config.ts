@@ -9,4 +9,15 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom', 'zustand'],
+          'pdf-vendor': ['jspdf', 'html2canvas', 'react-to-print'],
+          'chart-vendor': ['recharts'],
+        }
+      }
+    }
+  }
 })

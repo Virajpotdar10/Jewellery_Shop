@@ -24,5 +24,8 @@ const customerSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+customerSchema.index({ name: 'text' });
+customerSchema.index({ mobile: 1 });
+
 const Customer = mongoose.model('Customer', customerSchema);
 export default Customer;

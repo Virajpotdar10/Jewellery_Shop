@@ -67,5 +67,8 @@ billSchema.pre('save', function () {
     }
 });
 
+billSchema.index({ customerId: 1, date: -1 });
+billSchema.index({ billNumber: 1 });
+
 const Bill = mongoose.model('Bill', billSchema);
 export default Bill;

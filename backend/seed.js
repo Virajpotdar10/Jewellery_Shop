@@ -8,7 +8,7 @@ dotenv.config();
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/jewellery-shop';
 
 const users = [
-    { username: 'virajpotdar4@gmail.com', password: 'as123456', role: 'Admin' },
+    { username: 'virajpotdar4@gmail.com', password: '123456', role: 'Admin' },
     { username: 'sandeeppotdar1991@gmail.com', password: '123456', role: 'Admin' },
 ];
 
