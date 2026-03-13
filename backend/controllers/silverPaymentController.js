@@ -5,10 +5,7 @@ import LedgerEntry from '../models/LedgerEntry.js';
 import Bill from '../models/Bill.js';
 
 export const addSilverPayment = async (req, res) => {
-    let session;
     try {
-        session = await mongoose.startSession();
-        session.startTransaction();
         const {
             customerId,
             billId = null,
@@ -18,16 +15,16 @@ export const addSilverPayment = async (req, res) => {
         } = req.body;
 
         if (!customerId || !grossWeight || !purity) {
-            await session.abortTransaction();
+            
             return res.status(400).json({ message: 'ग्राहक, एकूण वजन आणि शुद्धता आवश्यक आहे.' });
         }
 
         const fineWeight = parseFloat(((Number(grossWeight) * Number(purity)) / 100).toFixed(3));
 
         // --- Check customer exists ---
-        const customer = await Customer.findById(customerId).session(session);
+        const customer = await Customer.findById(customerId);
         if (!customer) {
-            await session.abortTransaction();
+            
             return res.status(404).json({ message: 'ग्राहक सापडला नाही.' });
         }
 
@@ -45,7 +42,7 @@ export const addSilverPayment = async (req, res) => {
             // Actually, "Prevent negative balance" might refer to rupee balance.
             // In silver, if I give more, I have a "Jama" (Credit).
             // But I will follow the explicit rule.
-            // await session.abortTransaction();
+            // 
             // return res.status(400).json({ message: 'दिलेली चांदी शिल्लक फाइनपेक्षा जास्त आहे.' });
         }
 
@@ -62,11 +59,11 @@ export const addSilverPayment = async (req, res) => {
             date: new Date(),
         });
 
-        const createdPayment = await silverPayment.save({ session });
+        const createdPayment = await silverPayment.save();
 
         // --- Update Customer ---
         customer.fineBalance = newFineBalance;
-        await customer.save({ session });
+        await customer.save();
 
         // --- Ledger Entry ---
         const ledgerEntry = new LedgerEntry({
@@ -83,21 +80,21 @@ export const addSilverPayment = async (req, res) => {
             refModel: 'SilverPayment',
             date: new Date(),
         });
-        await ledgerEntry.save({ session });
+        await ledgerEntry.save();
 
-        await session.commitTransaction();
+        
         res.status(201).json(createdPayment);
 
     } catch (error) {
         try {
-            if (session) await session.abortTransaction();
+            
         } catch (abortError) {
             console.error('Abort failed in silver-payments:', abortError?.message);
         }
         console.error("SILVER PAYMENT ERROR:", error);
         res.status(500).json({ message: error.message, stack: error?.stack, type: error?.name });
     } finally {
-        if (session) session.endSession();
+        
     }
 };
 

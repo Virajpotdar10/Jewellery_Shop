@@ -20,8 +20,7 @@ const calcSilver = (grossWeight = 0, purity = 0, silverRate = 0) => {
  *         silverGrossWeight, silverPurity, silverRate, notes }
  */
 export const addPayment = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    
     try {
         const {
             customerId,
@@ -37,7 +36,7 @@ export const addPayment = async (req, res) => {
         } = req.body;
 
         if (!customerId) {
-            await session.abortTransaction();
+            
             return res.status(400).json({ message: 'customerId आवश्यक आहे.' });
         }
 
@@ -51,18 +50,18 @@ export const addPayment = async (req, res) => {
         );
 
         if (totalAmount <= 0) {
-            await session.abortTransaction();
+            
             return res.status(400).json({ message: 'पेमेंट रक्कम शून्यपेक्षा जास्त असणे आवश्यक आहे.' });
         }
 
         // --- Check customer exists & prevent negative balance ---
-        const customer = await Customer.findById(customerId).session(session);
+        const customer = await Customer.findById(customerId);
         if (!customer) {
-            await session.abortTransaction();
+            
             return res.status(404).json({ message: 'ग्राहक सापडला नाही.' });
         }
         if (totalAmount > customer.currentBalance + 0.01) {
-            await session.abortTransaction();
+            
             return res.status(400).json({
                 message: `पेमेंट (₹${totalAmount}) शिल्लक (₹${customer.currentBalance}) पेक्षा जास्त आहे.`
             });
@@ -85,9 +84,9 @@ export const addPayment = async (req, res) => {
         // --- Check and update Bill if billId is provided ---
         let billUpdatePromise = null;
         if (billId) {
-            const bill = await Bill.findById(billId).session(session);
+            const bill = await Bill.findById(billId);
             if (!bill) {
-                await session.abortTransaction();
+                
                 return res.status(404).json({ message: 'Bill not found.' });
             }
             const monetaryPayment = Number(cashAmount) + Number(upiAmount) + Number(bankAmount);
@@ -101,7 +100,7 @@ export const addPayment = async (req, res) => {
                 bill.paymentBreakdown.upiPaid = (bill.paymentBreakdown.upiPaid || 0) + Number(upiAmount);
                 bill.paymentBreakdown.bankPaid = (bill.paymentBreakdown.bankPaid || 0) + Number(bankAmount);
 
-                billUpdatePromise = bill.save({ session });
+                billUpdatePromise = bill.save();
             }
         }
 
@@ -121,7 +120,7 @@ export const addPayment = async (req, res) => {
             silverValue,
             notes,
             date: new Date(),
-        }).save({ session });
+        }).save();
 
         // --- Create ledger entries (one per payment type) ---
         let runningBalance = customer.currentBalance;
@@ -137,7 +136,7 @@ export const addPayment = async (req, res) => {
                 refId: payment._id,
                 refModel: 'Payment',
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
         if (hasUpi) {
             runningBalance = parseFloat((runningBalance - Number(upiAmount)).toFixed(2));
@@ -150,7 +149,7 @@ export const addPayment = async (req, res) => {
                 refId: payment._id,
                 refModel: 'Payment',
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
         if (hasBank) {
             runningBalance = parseFloat((runningBalance - Number(bankAmount)).toFixed(2));
@@ -163,7 +162,7 @@ export const addPayment = async (req, res) => {
                 refId: payment._id,
                 refModel: 'Payment',
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
         if (hasSilver) {
             runningBalance = parseFloat((runningBalance - silverValue).toFixed(2));
@@ -176,25 +175,25 @@ export const addPayment = async (req, res) => {
                 refId: payment._id,
                 refModel: 'Payment',
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
 
         // --- Update customer balance ---
         customer.currentBalance = newBalance;
-        await customer.save({ session });
+        await customer.save();
 
         if (billUpdatePromise) {
             await billUpdatePromise;
         }
 
-        await session.commitTransaction();
+        
         res.status(201).json(payment);
 
     } catch (error) {
-        await session.abortTransaction();
+        
         res.status(500).json({ message: error.message });
     } finally {
-        session.endSession();
+        
     }
 };
 

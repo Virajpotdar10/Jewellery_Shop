@@ -43,3 +43,29 @@ export const addLedgerEntry = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+export const deleteLedgerEntry = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const entry = await LedgerEntry.findById(id);
+        if (!entry) return res.status(404).json({ message: 'Entry not found' });
+
+        const customer = await Customer.findById(entry.customerId);
+        if (customer) {
+            // Reverse the effect of this entry on the customer's balance
+            // If it was a debit (charge), we subtract it. If credit (payment), we add it back.
+            const newBalance = parseFloat(
+                (customer.currentBalance - (entry.debit || 0) + (entry.credit || 0)).toFixed(2)
+            );
+            customer.currentBalance = newBalance;
+            await customer.save();
+        }
+
+        // Also delete the underlying document if it was linked (optional/complex, simple delete for now)
+        await LedgerEntry.findByIdAndDelete(id);
+
+        res.json({ message: 'Entry deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};

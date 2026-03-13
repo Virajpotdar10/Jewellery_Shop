@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import api from '../api';
 import { Plus, Trash2, Save, Search, Share2, X, Download, Coins } from 'lucide-react';
@@ -55,6 +56,7 @@ const SilverPaymentFields = ({ silver, onChange }: { silver: SilverPayment; onCh
 
 
 const Billing = () => {
+    const [searchParams] = useSearchParams();
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [customerSearch, setCustomerSearch] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -86,12 +88,21 @@ const Billing = () => {
     // Ref points ONLY to the clean printable bill
     const printRef = useRef<HTMLDivElement>(null);
 
-    // ── Fetch silver rate ──
+    // ── Fetch silver rate & URL Customer ──
     useEffect(() => {
         api.get('/silver-rates')
             .then(r => setSilverRatePerKg(r.data?.rate || 0))
             .catch(() => { });
-    }, []);
+        
+        const customerId = searchParams.get('customerId');
+        if (customerId) {
+            api.get(`/customers/${customerId}`)
+                .then(r => {
+                    if (r.data) selectCustomer(r.data);
+                })
+                .catch(() => { console.error("Failed to load customer from URL") });
+        }
+    }, [searchParams]);
 
     // ── Customer search ──
     useEffect(() => {
@@ -203,7 +214,6 @@ const Billing = () => {
 
             setSavedBill(bill);
             alert(`बिल #${bill.billNumber} यशस्वीरित्या जतन केले!`);
-            // resetForm(); // Do not clear the form automatically
         } catch (e: any) {
             console.error("Save error:", e);
             alert(e.response?.data?.message || 'बिल जतन करताना त्रुटी झाली.');
@@ -211,8 +221,21 @@ const Billing = () => {
         setSaving(false);
     };
 
-    // ── Capture printRef as image ──
-    const captureBillCanvas = () => html2canvas(printRef.current!, { scale: 2.5, useCORS: true, backgroundColor: '#FFFDE7', logging: false });
+    const captureBillCanvas = async () => {
+        if (document.fonts) { await document.fonts.ready; }
+        return html2canvas(printRef.current!, { 
+            scale: 2.5, 
+            useCORS: true, 
+            backgroundColor: '#FFFDE7', 
+            logging: false,
+            width: 920,
+            windowWidth: 920,
+            onclone: (doc) => {
+                const el = doc.getElementById('bill-print-wrapper');
+                if (el) el.style.width = '920px';
+            }
+        });
+    };
 
     // ── Download bill preview as PNG image ──
     const handleDownloadImage = async () => {
@@ -282,24 +305,23 @@ const Billing = () => {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                     <button onClick={resetForm}
-                        className="flex items-center gap-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground border border-border px-3 py-2 rounded-md transition-colors text-sm font-medium">
-                        <Plus className="h-4 w-4" />
-                        नवीन बिल
+                        className="flex-1 md:flex-none flex items-center justify-center gap-1.5 border border-[#dd3355] text-[#dd3355] px-4 py-1.5 rounded hover:bg-red-50 transition text-sm font-medium bg-white">
+                        <Plus className="h-4 w-4" /> नवीन बिल
                     </button>
                     <button onClick={handleShareWhatsApp} disabled={sharing}
-                        className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-md transition-colors text-sm font-medium">
+                        className="flex-1 md:flex-none flex items-center justify-center gap-1.5 bg-[#25D366] text-white px-4 py-1.5 rounded hover:bg-[#128C7E] transition disabled:opacity-50 text-sm font-medium shadow-sm border border-[#1DA851]">
                         <Share2 className="h-4 w-4" />
-                        {sharing ? 'तयार होत आहे...' : 'WhatsApp'}
+                        {sharing ? '...' : 'WhatsApp'}
                     </button>
                     <button onClick={handleDownloadImage} disabled={downloading}
-                        className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-3 py-2 rounded-md transition-colors text-sm font-medium">
+                        className="flex-1 md:flex-none flex items-center justify-center gap-1.5 bg-[#334155] text-white px-4 py-1.5 rounded hover:bg-[#1e293b] transition disabled:opacity-50 text-sm font-medium border border-slate-800">
                         <Download className="h-4 w-4" />
-                        {downloading ? 'डाउनलोड...' : 'बिल डाउनलोड'}
+                        {downloading ? '...' : 'बिल डाउनलोड'}
                     </button>
                     <button onClick={handleSave} disabled={saving}
-                        className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors text-sm font-medium">
+                        className="flex-1 md:flex-none flex items-center justify-center gap-1.5 bg-[#ef4444] text-white px-4 py-1.5 rounded hover:bg-[#dc2626] transition disabled:opacity-50 text-sm font-medium border border-red-600">
                         <Save className="h-4 w-4" />
-                        {saving ? 'जतन होत आहे...' : 'जतन करा'}
+                        {saving ? '...' : 'जतन करा'}
                     </button>
                 </div>
             </div>
@@ -566,9 +588,11 @@ const Billing = () => {
                 <div>
                     <p className="text-xs text-muted-foreground mb-2 text-center">WhatsApp Bill Preview</p>
                     {/* Scroll wrapper on mobile so user can see the full bill */}
-                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                        <div ref={printRef} style={{ display: 'inline-block' }}>
-                            <PrintableBill {...billProps} />
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                        <div style={{ width: '920px', minWidth: '920px' }}>
+                            <div id="bill-print-wrapper" ref={printRef} style={{ display: 'inline-block', width: '920px', backgroundColor: '#FFFDE7' }}>
+                                <PrintableBill {...billProps} />
+                            </div>
                         </div>
                     </div>
                 </div>

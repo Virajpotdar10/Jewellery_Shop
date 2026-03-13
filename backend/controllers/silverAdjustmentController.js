@@ -12,8 +12,7 @@ import Bill from '../models/Bill.js';
  * Body: { billId, customerId, date?, grossWeight, purity, silverRate, notes? }
  */
 export const addSilverAdjustment = async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    
     try {
         const {
             billId,
@@ -37,8 +36,8 @@ export const addSilverAdjustment = async (req, res) => {
 
         // --- Verify bill & customer exist ---
         const [bill, customer] = await Promise.all([
-            Bill.findById(billId).session(session),
-            Customer.findById(customerId).session(session),
+            Bill.findById(billId),
+            Customer.findById(customerId),
         ]);
         if (!bill) return res.status(404).json({ message: 'बिल सापडले नाही.' });
         if (!customer) return res.status(404).json({ message: 'ग्राहक सापडला नाही.' });
@@ -51,7 +50,7 @@ export const addSilverAdjustment = async (req, res) => {
         const value = parseFloat((fineWeight * rate).toFixed(2));
 
         if (value > customer.currentBalance + 0.01) {
-            await session.abortTransaction();
+            
             return res.status(400).json({
                 message: `चांदी मूल्य (₹${value}) शिल्लक (₹${customer.currentBalance}) पेक्षा जास्त आहे.`
             });
@@ -70,7 +69,7 @@ export const addSilverAdjustment = async (req, res) => {
             silverRate: rate,
             value,
             notes,
-        }).save({ session });
+        }).save();
 
         // --- Create SILVER_ADJUSTMENT Ledger Entry ---
         const ledgerEntry = await new LedgerEntry({
@@ -82,24 +81,24 @@ export const addSilverAdjustment = async (req, res) => {
             refId: adjustment._id,
             refModel: 'SilverAdjustment',
             date: adjustment.date,
-        }).save({ session });
+        }).save();
 
         // Link ledger entry back to the adjustment
         adjustment.ledgerEntryId = ledgerEntry._id;
-        await adjustment.save({ session });
+        await adjustment.save();
 
         // --- Update bill remaining balance ---
         const updatedBillBalance = parseFloat((bill.remainingBalance - value).toFixed(2));
         bill.remainingBalance = updatedBillBalance;
         bill.paidAmount = parseFloat((bill.paidAmount + value).toFixed(2));
         // status recomputed by pre-save hook
-        await bill.save({ session });
+        await bill.save();
 
         // --- Update customer balance ---
         customer.currentBalance = newBalance;
-        await customer.save({ session });
+        await customer.save();
 
-        await session.commitTransaction();
+        
         res.status(201).json({
             adjustment,
             ledgerEntry,
@@ -107,10 +106,10 @@ export const addSilverAdjustment = async (req, res) => {
         });
 
     } catch (error) {
-        await session.abortTransaction();
+        
         res.status(500).json({ message: error.message });
     } finally {
-        session.endSession();
+        
     }
 };
 

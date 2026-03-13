@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import api from '../api';
 import {
-    Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2, Coins, X, Plus, Share2
+    Search, ArrowUpCircle, ArrowDownCircle, CreditCard, Trash2, Coins, X, Plus, Share2, FileText, Save
 } from 'lucide-react';
 import type { Customer, SilverPayment, PaymentMode } from '../types';
 import { PrintableBill } from '../components/PrintableBill';
@@ -61,18 +61,36 @@ const Ledger = () => {
     const [adjSaving, setAdjSaving] = useState(false);
     const [sharing, setSharing] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
+    // ── Delete Customer & Transaction ──
+    const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+    const [deleteTxTarget, setDeleteTxTarget] = useState<any | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
+    // ── Add New Customer ──
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [customerForm, setCustomerForm] = useState({ name: '', mobile: '', address: '', currentBalance: '' });
+    const [savingCustomer, setSavingCustomer] = useState(false);
 
     // ── Post-Bill Rupee Payment ──
     const [addRupee, setAddRupee] = useState({ cash: 0, upi: 0, bank: 0 });
     const [rupeeSaving, setRupeeSaving] = useState(false);
 
     // ── Capture printRef as image ──
-    const captureBillCanvas = () => html2canvas(printRef.current!, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#FFFDE7',
-        logging: false
-    });
+    const captureBillCanvas = async () => {
+        if (document.fonts) { await document.fonts.ready; }
+        return html2canvas(printRef.current!, {
+            scale: 2.5,
+            useCORS: true,
+            backgroundColor: '#FFFDE7',
+            logging: false,
+            width: 920,
+            windowWidth: 920,
+            onclone: (doc) => {
+                const el = doc.getElementById('ledger-bill-print-wrapper');
+                if (el) el.style.width = '920px';
+            }
+        });
+    };
 
     const handleShareWhatsApp = async () => {
         if (!printRef.current || !selectedCustomer || !viewBill) return;
@@ -143,20 +161,66 @@ const Ledger = () => {
         setLoading(false);
     };
 
+    const handleAddCustomer = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!customerForm.name) return;
+        setSavingCustomer(true);
+        try {
+            const res = await api.post('/customers', {
+                name: customerForm.name,
+                mobile: customerForm.mobile,
+                address: customerForm.address,
+                currentBalance: Number(customerForm.currentBalance) || 0,
+            });
+            setCustomerForm({ name: '', mobile: '', address: '', currentBalance: '' });
+            setShowAddForm(false);
+            
+            // Refresh customers list and select the new customer
+            const newCustList = await api.get('/customers');
+            setAllCustomers(newCustList.data);
+            selectCustomer(res.data);
+            alert('नवीन ग्राहक यशस्वीरित्या जोडला!');
+        } catch (e: any) {
+            alert(e.response?.data?.message || 'ग्राहक जोडताना त्रुटी झाली.');
+        }
+        setSavingCustomer(false);
+    };
+
     const selectCustomer = (c: Customer) => {
         setSelectedCustomer(c);
         setSearch('');
         loadLedger(c._id);
     };
 
-    const handleDelete = async (c: Customer) => {
-        if (!window.confirm(`"${c.name}" ग्राहकाला कायमचा हटवायचा का?\n\nत्यांचे सर्व व्यवहार देखील हटवले जातील.`)) return;
+    const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await api.delete(`/customers/${c._id}`);
-            setAllCustomers(prev => prev.filter(x => x._id !== c._id));
+            await api.delete(`/customers/${deleteTarget._id}`);
+            setAllCustomers(prev => prev.filter(x => x._id !== deleteTarget._id));
+            setDeleteTarget(null);
+            if (selectedCustomer?._id === deleteTarget._id) {
+                setSelectedCustomer(null);
+                setEntries([]);
+            }
         } catch (e: any) {
             alert(e.response?.data?.message || 'हटवताना त्रुटी झाली.');
         }
+        setDeleting(false);
+    };
+
+    const handleDeleteTx = async () => {
+        if (!deleteTxTarget || !selectedCustomer) return;
+        setDeleting(true);
+        try {
+            await api.delete(`/ledger/${deleteTxTarget._id}`);
+            setDeleteTxTarget(null);
+            loadLedger(selectedCustomer._id);
+            alert('व्यवहार यशस्वीरित्या हटवला.');
+        } catch (e: any) {
+            alert(e.response?.data?.message || 'व्यवहार हटवताना त्रुटी झाली.');
+        }
+        setDeleting(false);
     };
 
     // ── Compute total payment amount ──
@@ -261,6 +325,122 @@ const Ledger = () => {
 
     return (
         <div className="space-y-6">
+
+            {/* ═══════════════════════════════
+                DELETE CUSTOMER CONFIRMATION MODAL
+            ═══════════════════════════════ */}
+            {deleteTarget && (
+                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+                        <div className="p-6 text-center">
+                            <div className="mx-auto mb-4 h-14 w-14 rounded-full bg-red-100 flex items-center justify-center">
+                                <Trash2 className="h-7 w-7 text-red-600" />
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-900 mb-2">ग्राहक हटवायचा का?</h2>
+                            <p className="text-gray-600 text-sm mb-1">
+                                <span className="font-semibold text-gray-900">"{deleteTarget.name}"</span> हा खाते कायमचा हटवला जाईल.
+                            </p>
+                            <p className="text-red-600 text-xs font-medium mb-6">
+                                ⚠️ त्याचे सर्व व्यवहार आणि बिले सुद्धा हटवली जातील. हे पूर्ववत करता येणार नाही.
+                            </p>
+                            <div className="flex gap-3">
+                                <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                                    className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-lg hover:bg-gray-50 transition-colors font-medium">
+                                    नाही (No)
+                                </button>
+                                <button onClick={handleDelete} disabled={deleting}
+                                    className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg transition-colors font-medium flex items-center justify-center gap-2">
+                                    <Trash2 className="h-4 w-4" />
+                                    {deleting ? 'हटवत आहे...' : 'होय (Yes)'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════════════════════════════
+                DELETE TRANSACTION CONFIRMATION MODAL
+            ═══════════════════════════════ */}
+            {deleteTxTarget && (
+                <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+                        <div className="p-6 text-center">
+                            <div className="mx-auto mb-4 h-14 w-14 rounded-full bg-red-100 flex items-center justify-center">
+                                <Trash2 className="h-7 w-7 text-red-600" />
+                            </div>
+                            <h2 className="text-xl font-bold text-gray-900 mb-2">व्यवहार हटवायचा का?</h2>
+                            <p className="text-gray-600 text-sm mb-6">
+                                हा व्यवहार कायमचा हटवला जाईल. हे पूर्ववत करता येणार नाही.
+                            </p>
+                            <div className="flex gap-3">
+                                <button onClick={() => setDeleteTxTarget(null)} disabled={deleting}
+                                    className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-lg hover:bg-gray-50 transition-colors font-medium">
+                                    नाही (No)
+                                </button>
+                                <button onClick={handleDeleteTx} disabled={deleting}
+                                    className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg transition-colors font-medium flex items-center justify-center gap-2">
+                                    <Trash2 className="h-4 w-4" />
+                                    {deleting ? 'हटवत आहे...' : 'होय (Yes)'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════════════════════════════
+                ADD CUSTOMER MODAL
+            ═══════════════════════════════ */}
+            {showAddForm && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+                        <div className="flex items-center justify-between p-6 border-b border-border">
+                            <h2 className="text-xl font-bold text-foreground">नवीन खाते जोडा</h2>
+                            <button onClick={() => setShowAddForm(false)} className="text-muted-foreground hover:text-foreground">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleAddCustomer} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-1">ग्राहकाचे नाव *</label>
+                                <input type="text" required value={customerForm.name} onChange={e => setCustomerForm({ ...customerForm, name: e.target.value })}
+                                    className="w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    placeholder="पूर्ण नाव टाका" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-1">मोबाइल नंबर</label>
+                                <input type="tel" value={customerForm.mobile} onChange={e => setCustomerForm({ ...customerForm, mobile: e.target.value })}
+                                    className="w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    placeholder="मोबाइल नंबर" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-1">पत्ता</label>
+                                <textarea value={customerForm.address} onChange={e => setCustomerForm({ ...customerForm, address: e.target.value })}
+                                    className="w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    rows={2} placeholder="पूर्ण पत्ता" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-1">उघडणारी शिल्लक (Opening Balance ₹)</label>
+                                <input type="number" value={customerForm.currentBalance} onChange={e => setCustomerForm({ ...customerForm, currentBalance: e.target.value })}
+                                    className="w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    placeholder="0" min="0" />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setShowAddForm(false)}
+                                    className="flex-1 border border-border text-foreground py-2 rounded-md hover:bg-secondary transition-colors">
+                                    रद्द करा
+                                </button>
+                                <button type="submit" disabled={savingCustomer}
+                                    className="flex-1 bg-primary text-primary-foreground py-2 rounded-md hover:bg-primary/90 transition-colors font-medium">
+                                    {savingCustomer ? 'जतन होत आहे...' : 'खाते जतन करा'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* Page Header */}
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
@@ -350,48 +530,56 @@ const Ledger = () => {
             {viewBill && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-0 sm:p-4">
                     <div className="bg-white sm:rounded-xl shadow-2xl w-full max-w-[1240px] flex flex-col h-full sm:h-auto sm:max-h-[96vh]">
-                        <div className="p-3 sm:p-4 border-b flex justify-between items-center bg-gray-50 sm:rounded-t-xl shrink-0">
+                        <div className="p-3 sm:p-4 border-b bg-gray-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:rounded-t-xl shrink-0">
                             <h2 className="text-lg sm:text-xl font-bold flex items-center gap-2">
                                 👁️ बिल पूर्वावलोकन <span className="text-muted-foreground text-sm font-normal">#{viewBill.billNumber}</span>
                             </h2>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                                <a href={selectedCustomer ? `/billing?customerId=${selectedCustomer._id}&customerName=${selectedCustomer.name}` : '#'} 
+                                    className="flex-1 md:flex-none flex items-center justify-center gap-1.5 border border-[#dd3355] text-[#dd3355] px-4 py-1.5 rounded hover:bg-red-50 transition text-sm font-medium bg-white">
+                                    <Plus className="h-4 w-4" /> नवीन बिल
+                                </a>
                                 <button
                                     onClick={handleShareWhatsApp}
                                     disabled={sharing}
-                                    className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition disabled:opacity-50 text-xs font-bold"
+                                    className="flex-1 md:flex-none flex items-center justify-center gap-1.5 bg-[#25D366] text-white px-4 py-1.5 rounded hover:bg-[#128C7E] transition disabled:opacity-50 text-sm font-medium"
                                 >
-                                    <Share2 className="h-4 w-4" /> {sharing ? 'तयार होत आहे...' : 'WhatsApp वर पाठवा'}
+                                    <Share2 className="h-4 w-4" /> {sharing ? '...' : 'WhatsApp'}
                                 </button>
-                                <button onClick={() => setViewBill(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="h-5 w-5" /></button>
+                                <button className="flex-1 md:flex-none flex items-center justify-center gap-1.5 bg-[#334155] text-white px-4 py-1.5 rounded hover:bg-[#1e293b] transition text-sm font-medium">
+                                    <FileText className="h-4 w-4" /> बिल डाउनलोड
+                                </button>
+                                <button onClick={() => setViewBill(null)} className="flex-1 md:flex-none flex items-center justify-center gap-1.5 bg-[#ef4444] text-white px-4 py-1.5 rounded hover:bg-[#dc2626] transition text-sm font-medium">
+                                    <Save className="h-4 w-4" /> जतन करा
+                                </button>
+                                <button onClick={() => setViewBill(null)} className="md:ml-2 p-1.5 text-gray-500 hover:bg-gray-200 rounded-full transition-colors hidden md:block">
+                                    <X className="h-5 w-5" />
+                                </button>
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto p-3 sm:p-5 flex flex-col xl:flex-row gap-6">
                             {/* TOP: Printable Bill Preview (Shows at TOP on mobile) */}
-                            <div className="w-full xl:flex-1 overflow-x-auto bg-gray-50 p-2 sm:p-4 rounded-lg flex justify-center border border-dashed border-gray-300 min-h-[300px]">
-                                <style>{`
-                                    @media (max-width: 480px) { .responsive-bill { zoom: 0.35; } }
-                                    @media (min-width: 481px) and (max-width: 640px) { .responsive-bill { zoom: 0.50; } }
-                                    @media (min-width: 641px) and (max-width: 1024px) { .responsive-bill { zoom: 0.70; } }
-                                    @media (min-width: 1025px) { .responsive-bill { zoom: 0.85; } }
-                                `}</style>
-                                <div className="responsive-bill shadow-md bg-white" style={{ margin: '0 auto' }} ref={printRef}>
-                                    <PrintableBill
-                                        customer={selectedCustomer}
-                                        items={viewBill.items}
-                                        subtotal={viewBill.subtotal}
-                                        previousBalance={viewBill.previousBalance}
-                                        previousFine={viewBill.previousFine}
-                                        totalPayable={viewBill.totalPayable}
-                                        cashPaid={viewBill.paymentBreakdown?.cashPaid || 0}
-                                        upiPaid={viewBill.paymentBreakdown?.upiPaid || 0}
-                                        bankPaid={viewBill.paymentBreakdown?.bankPaid || 0}
-                                        silverPayments={billSilverPayments}
-                                        remainingBalance={viewBill.remainingBalance}
-                                        billNumber={viewBill.billNumber}
-                                        billDate={viewBill.date}
-                                        silverRate={viewBill.silverRateUsed}
-                                        totalFineWeight={viewBill.totalFineWeight}
-                                    />
+                            <div className="w-full xl:flex-1 overflow-x-auto bg-gray-50 p-2 sm:p-4 rounded-lg border border-dashed border-gray-300 min-h-[300px]" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                <div style={{ width: '920px', minWidth: '920px', margin: '0 auto' }} className="shadow-md bg-white">
+                                    <div id="ledger-bill-print-wrapper" ref={printRef} style={{ display: 'inline-block', width: '920px', backgroundColor: '#FFFDE7' }}>
+                                        <PrintableBill
+                                            customer={selectedCustomer}
+                                            items={viewBill.items}
+                                            subtotal={viewBill.subtotal}
+                                            previousBalance={viewBill.previousBalance}
+                                            previousFine={viewBill.previousFine}
+                                            totalPayable={viewBill.totalPayable}
+                                            cashPaid={viewBill.paymentBreakdown?.cashPaid || 0}
+                                            upiPaid={viewBill.paymentBreakdown?.upiPaid || 0}
+                                            bankPaid={viewBill.paymentBreakdown?.bankPaid || 0}
+                                            silverPayments={billSilverPayments}
+                                            remainingBalance={viewBill.remainingBalance}
+                                            billNumber={viewBill.billNumber}
+                                            billDate={viewBill.date}
+                                            silverRate={viewBill.silverRateUsed}
+                                            totalFineWeight={viewBill.totalFineWeight}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -460,14 +648,22 @@ const Ledger = () => {
                 </div>
             )}
 
-            {/* Search bar */}
-            <div className="flex items-center border border-border rounded-md bg-white shadow-sm">
-                <Search className="h-4 w-4 text-muted-foreground ml-3 flex-shrink-0" />
-                <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                    className="flex-1 px-3 py-2.5 focus:outline-none text-sm"
-                    placeholder="नाव किंवा मोबाइल नंबरने शोधा..." />
-                {search && (
-                    <button onClick={() => setSearch('')} className="mr-3 text-muted-foreground hover:text-foreground text-xs">✕ साफ</button>
+            {/* Search bar & Add Button */}
+            <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex items-center border border-border rounded-md bg-white shadow-sm flex-1">
+                    <Search className="h-4 w-4 text-muted-foreground ml-3 flex-shrink-0" />
+                    <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                        className="flex-1 px-3 py-2.5 focus:outline-none text-sm"
+                        placeholder="नाव किंवा मोबाइल नंबरने शोधा..." />
+                    {search && (
+                        <button onClick={() => setSearch('')} className="mr-3 text-muted-foreground hover:text-foreground text-xs">✕ साफ</button>
+                    )}
+                </div>
+                {!selectedCustomer && (
+                    <button onClick={() => setShowAddForm(true)}
+                        className="flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors font-medium whitespace-nowrap shadow-sm">
+                        <Plus className="h-4 w-4" /> नवीन खाते जोडा
+                    </button>
                 )}
             </div>
 
@@ -501,10 +697,10 @@ const Ledger = () => {
                                             </span>
                                             {c.currentBalance > 0 && <p className="text-xs text-muted-foreground">थकबाकी</p>}
                                         </div>
-                                        <button onClick={e => { e.stopPropagation(); handleDelete(c); }}
-                                            className="opacity-0 group-hover:opacity-100 text-destructive hover:bg-destructive/10 p-1.5 rounded transition-all"
+                                        <button onClick={e => { e.stopPropagation(); setDeleteTarget(c); }}
+                                            className="text-destructive hover:bg-destructive/10 p-2 rounded transition-all bg-destructive/5"
                                             title="ग्राहक हटवा">
-                                            <Trash2 className="h-4 w-4" />
+                                            <Trash2 className="h-5 w-5 md:h-4 md:w-4" />
                                         </button>
                                     </div>
                                 </div>
@@ -558,61 +754,141 @@ const Ledger = () => {
                     ) : entries.length === 0 ? (
                         <div className="p-8 text-center text-muted-foreground">कोणताही व्यवहार आढळला नाही.</div>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-border bg-secondary/20">
-                                        <th className="text-left px-4 py-3">दिनांक</th>
-                                        <th className="text-left px-4 py-3">प्रकार</th>
-                                        <th className="text-left px-4 py-3">तपशील</th>
-                                        <th className="text-right px-4 py-3 text-destructive">उधार</th>
-                                        <th className="text-right px-4 py-3 text-green-600">जमा</th>
-                                        <th className="text-right px-4 py-3">शिल्लक</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {entries.map((e, i) => {
-                                        const badge = ENTRY_BADGE[e.entryType] || { label: e.entryType, cls: 'bg-gray-100 text-gray-600 border-gray-300' };
-                                        return (
-                                            <tr key={e._id} className={`border-b border-border ${i % 2 === 0 ? '' : 'bg-secondary/10'}`}>
-                                                <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                                                    {new Date(e.date).toLocaleDateString('mr-IN')}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${badge.cls}`}>
+                        <div className="w-full">
+                            {/* Desktop Table View */}
+                            <div className="hidden md:block overflow-x-auto w-full">
+                                <table className="w-full text-sm whitespace-nowrap">
+                                    <thead>
+                                        <tr className="border-b border-border bg-secondary/20 min-w-max text-sm">
+                                            <th className="text-left px-4 py-3 min-w-[100px]">दिनांक</th>
+                                            <th className="text-left px-4 py-3">प्रकार</th>
+                                            <th className="text-right px-4 py-3 text-destructive">उधार</th>
+                                            <th className="text-right px-4 py-3 text-green-600">जमा</th>
+                                            <th className="text-right px-4 py-3">शिल्लक</th>
+                                            <th className="text-left px-4 py-3 w-full">तपशील</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {entries.map((e, i) => {
+                                            const badge = ENTRY_BADGE[e.entryType] || { label: e.entryType, cls: 'bg-gray-100 text-gray-600 border-gray-300' };
+                                            return (
+                                                <tr key={e._id} className={`border-b border-border hover:bg-muted/50 transition-colors ${i % 2 === 0 ? '' : 'bg-secondary/10'}`}>
+                                                    <td className="px-4 py-3 text-muted-foreground text-sm">
+                                                        {new Date(e.date).toLocaleDateString('mr-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${badge.cls}`}>
+                                                            {badge.label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        {e.debit > 0 && (
+                                                            <span className="flex items-center justify-end gap-1 text-[#dd3355] font-medium text-sm">
+                                                                <ArrowUpCircle className="h-3.5 w-3.5" /> ₹{e.debit.toLocaleString('en-IN')}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        {e.credit > 0 && (
+                                                            <span className="flex items-center justify-end gap-1 text-[#22c55e] font-medium text-sm">
+                                                                <ArrowDownCircle className="h-3.5 w-3.5" /> ₹{e.credit.toLocaleString('en-IN')}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-semibold text-sm">
+                                                        ₹{e.balance.toLocaleString('en-IN')}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm border-l border-border/50">
+                                                        <div className="flex items-center justify-between gap-3 min-w-[200px]">
+                                                            {e.entryType === 'BILL' ? (
+                                                                <div className="flex flex-col gap-1 w-full whitespace-normal">
+                                                                    <span className="text-muted-foreground font-medium">बिल #{e.refId?.substring(e.refId.length - 4) || '??'}</span>
+                                                                    <button onClick={() => openViewBill(e.refId!)} className="flex items-center gap-1.5 text-[#dd3355] hover:bg-red-50 transition-colors font-medium border border-red-200 px-3 py-1.5 rounded-md w-fit shadow-sm text-xs">
+                                                                        👁️ बिल पहा (चांदी जमा करा)
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-muted-foreground whitespace-normal flex-1 line-clamp-2">{e.description}</span>
+                                                            )}
+                                                            <button 
+                                                                onClick={() => setDeleteTxTarget(e)} 
+                                                                className="p-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded transition-colors"
+                                                                title="व्यवहार हटवा"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Mobile Card View */}
+                            <div className="block md:hidden w-full divide-y divide-border">
+                                {entries.map((e) => {
+                                    const badge = ENTRY_BADGE[e.entryType] || { label: e.entryType, cls: 'bg-gray-100 text-gray-600 border-gray-300' };
+                                    return (
+                                        <div key={`mob-${e._id}`} className="p-4 flex flex-col gap-3 bg-white hover:bg-gray-50 transition-colors">
+                                            {/* Header Row: Date & Type & Delete */}
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-muted-foreground text-sm font-medium">
+                                                        {new Date(e.date).toLocaleDateString('mr-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                                    </span>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${badge.cls}`}>
                                                         {badge.label}
                                                     </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px]">
-                                                    <span className="line-clamp-2">{e.description}</span>
-                                                    {e.entryType === 'BILL' && e.refId && (
-                                                        <button onClick={() => openViewBill(e.refId)} className="mt-1 flex items-center gap-1 text-primary hover:text-primary/80 hover:underline font-semibold text-xs">
+                                                </div>
+                                                <button 
+                                                    onClick={() => setDeleteTxTarget(e)} 
+                                                    className="p-1.5 text-red-500 hover:bg-red-100 rounded transition-colors"
+                                                    title="व्यवहार हटवा"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            </div>
+
+                                            {/* Amounts Grid */}
+                                            <div className="grid grid-cols-3 gap-2 bg-slate-50 border border-slate-100 rounded-lg p-2 text-center text-sm">
+                                                <div className="flex flex-col border-r border-slate-200">
+                                                    <span className="text-[10px] text-muted-foreground font-bold mb-0.5">उधार</span>
+                                                    {e.debit > 0 ? (
+                                                        <span className="text-[#dd3355] font-bold">₹{e.debit.toLocaleString('en-IN')}</span>
+                                                    ) : <span className="text-gray-300">-</span>}
+                                                </div>
+                                                <div className="flex flex-col border-r border-slate-200">
+                                                    <span className="text-[10px] text-muted-foreground font-bold mb-0.5">जमा</span>
+                                                    {e.credit > 0 ? (
+                                                        <span className="text-[#22c55e] font-bold">₹{e.credit.toLocaleString('en-IN')}</span>
+                                                    ) : <span className="text-gray-300">-</span>}
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] text-muted-foreground font-bold mb-0.5">शिल्लक</span>
+                                                    <span className="font-black text-gray-800">₹{e.balance.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Details Section */}
+                                            <div className="pt-1">
+                                                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider block mb-1">तपशील</span>
+                                                {e.entryType === 'BILL' ? (
+                                                    <div className="flex flex-col gap-2">
+                                                        <span className="text-sm font-semibold text-gray-800">बिल #{e.refId?.substring(e.refId.length - 4) || '??'}</span>
+                                                        <button onClick={() => openViewBill(e.refId!)} className="flex items-center justify-center gap-1.5 text-[#dd3355] hover:bg-red-50 font-bold border-2 border-red-200 px-3 py-2 rounded-lg w-full shadow-sm text-sm">
                                                             👁️ बिल पहा (चांदी जमा करा)
                                                         </button>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    {e.debit > 0 && (
-                                                        <span className="flex items-center justify-end gap-1 text-destructive font-medium">
-                                                            <ArrowUpCircle className="h-3.5 w-3.5" /> ₹{e.debit.toLocaleString('en-IN')}
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    {e.credit > 0 && (
-                                                        <span className="flex items-center justify-end gap-1 text-green-600 font-medium">
-                                                            <ArrowDownCircle className="h-3.5 w-3.5" /> ₹{e.credit.toLocaleString('en-IN')}
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3 text-right font-semibold">
-                                                    ₹{e.balance.toLocaleString('en-IN')}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-sm text-gray-700 leading-snug">{e.description}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>

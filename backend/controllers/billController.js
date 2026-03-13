@@ -33,10 +33,7 @@ const resolveMethod = (cashAmount, upiAmount, bankAmount, silverValue) => {
 };
 
 export const createBill = async (req, res) => {
-    let session;
     try {
-        session = await mongoose.startSession();
-        session.startTransaction();
 
         const {
             customerId,
@@ -51,9 +48,9 @@ export const createBill = async (req, res) => {
         } = req.body;
 
         // 1. Fetch Today's Silver Rate
-        const latestRateObj = await SilverRate.findOne().sort({ createdAt: -1 }).session(session);
+        const latestRateObj = await SilverRate.findOne().sort({ createdAt: -1 });
         if (!latestRateObj) {
-            await session.abortTransaction();
+            
             return res.status(400).json({ message: 'आजचा चांदीचा दर सेट केलेला नाही. कृपया सेटिंगमध्ये दर भरा.' });
         }
         const silverRateUsed = latestRateObj.rate;
@@ -88,12 +85,12 @@ export const createBill = async (req, res) => {
 
         // Prevent overpayment
         if (paidAmount > totalPayable + 0.01) {
-            await session.abortTransaction();
+            
             return res.status(400).json({ message: 'पेमेंट एकूण देण्यापेक्षा जास्त असू शकत नाही.' });
         }
 
         // --- Auto-increment billNumber ---
-        const lastBill = await Bill.findOne().sort({ billNumber: -1 }).session(session);
+        const lastBill = await Bill.findOne().sort({ billNumber: -1 });
         const nextBillNumber = lastBill ? lastBill.billNumber + 1 : 1;
 
         const paymentBreakdown = {
@@ -119,12 +116,12 @@ export const createBill = async (req, res) => {
             notes,
         });
 
-        const createdBill = await newBill.save({ session });
+        const createdBill = await newBill.save();
 
         // --- Update Customer Balance ---
-        const customer = await Customer.findById(customerId).session(session);
+        const customer = await Customer.findById(customerId);
         if (!customer) {
-            await session.abortTransaction();
+            
             return res.status(404).json({ message: 'ग्राहक सापडला नाही.' });
         }
 
@@ -133,7 +130,7 @@ export const createBill = async (req, res) => {
 
         customer.currentBalance = remainingBalance;
         customer.fineBalance = newFineBalance;
-        await customer.save({ session });
+        await customer.save();
 
         // --- Ledger: BILL debit entry ---
         const billLedger = new LedgerEntry({
@@ -150,7 +147,7 @@ export const createBill = async (req, res) => {
             refModel: 'Bill',
             date: new Date(),
         });
-        await billLedger.save({ session });
+        await billLedger.save();
 
         let runningBalance = parseFloat((Number(previousBalance) + billSubtotal).toFixed(2));
 
@@ -167,7 +164,7 @@ export const createBill = async (req, res) => {
                 refId: createdBill._id,
                 refModel: 'Bill',
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
         if (Number(upiAmount) > 0) {
             runningBalance = parseFloat((runningBalance - Number(upiAmount)).toFixed(2));
@@ -181,7 +178,7 @@ export const createBill = async (req, res) => {
                 refId: createdBill._id,
                 refModel: 'Bill',
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
         if (Number(bankAmount) > 0) {
             runningBalance = parseFloat((runningBalance - Number(bankAmount)).toFixed(2));
@@ -195,7 +192,7 @@ export const createBill = async (req, res) => {
                 refId: createdBill._id,
                 refModel: 'Bill',
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
 
         // --- Save Payment Record ---
@@ -209,7 +206,7 @@ export const createBill = async (req, res) => {
                 upiAmount: Number(upiAmount),
                 bankAmount: Number(bankAmount),
                 date: new Date(),
-            }).save({ session });
+            }).save();
         }
 
         // --- Inventory: deduct fine silver out ---
@@ -218,15 +215,15 @@ export const createBill = async (req, res) => {
                 itemName: item.description,
                 weightOut: item.fine,
                 currentStock: -item.fine,
-            }).save({ session });
+            }).save();
         }
 
-        await session.commitTransaction();
+        
         res.status(201).json(createdBill);
 
     } catch (error) {
         try {
-            if (session) await session.abortTransaction();
+            
         } catch (abortError) {
             console.error('Abort failed:', abortError?.message);
         }
@@ -244,7 +241,7 @@ export const createBill = async (req, res) => {
             stack: error?.stack || null
         });
     } finally {
-        if (session) session.endSession();
+        
     }
 };
 

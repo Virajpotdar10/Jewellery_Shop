@@ -189,15 +189,15 @@ const Dashboard = () => {
                     </Link>
 
                     <Link
-                        to="/customers"
+                        to="/ledger"
                         className="flex items-center gap-4 bg-white rounded-lg border-2 border-blue-200 hover:border-blue-400 p-5 transition-all shadow-sm hover:shadow-md group"
                     >
                         <div className="p-3 bg-blue-50 rounded-lg group-hover:bg-blue-100 transition-colors">
                             <Users className="h-7 w-7 text-blue-500" />
                         </div>
                         <div>
-                            <p className="font-semibold text-foreground">ग्राहक व्यवस्थापन</p>
-                            <p className="text-sm text-muted-foreground">ग्राहक पहा / नवीन जोडा</p>
+                            <p className="font-semibold text-foreground">नवीन ग्राहक</p>
+                            <p className="text-sm text-muted-foreground">नवीन खाते जोडा</p>
                         </div>
                     </Link>
 

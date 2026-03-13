@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
-import { Home, FileText, BookOpen, Diamond, LogOut, Users, Menu, X } from 'lucide-react';
+import { Home, FileText, BookOpen, Diamond, LogOut, Menu, X } from 'lucide-react';
 
 const Layout = () => {
     const { user, logout } = useAuthStore();
@@ -16,8 +16,7 @@ const Layout = () => {
     const navItems = [
         { name: 'डॅशबोर्ड', path: '/', icon: Home },
         { name: 'नवीन बिल', path: '/billing', icon: FileText },
-        { name: 'ग्राहक', path: '/customers', icon: Users },
-        { name: 'खातेवही (Ledger)', path: '/ledger', icon: BookOpen },
+        { name: 'खातेवही', path: '/ledger', icon: BookOpen },
         { name: 'अहवाल (Reports)', path: '/reports', icon: Diamond },
     ];
 
