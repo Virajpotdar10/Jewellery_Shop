@@ -17,12 +17,16 @@ interface PrintableBillProps {
     billDate?: string;
     silverRate: number;
     totalFineWeight: number;
+    // previous bills
+    previousBills?: any[];
+    showPreviousBillItems?: boolean;
 }
 
 export const PrintableBill: React.FC<PrintableBillProps> = ({
     customer, items, subtotal, previousBalance, previousFine = 0, totalPayable,
     cashPaid, upiPaid, bankPaid, silverPayments, remainingBalance,
-    billNumber, billDate, silverRate, totalFineWeight
+    billNumber, billDate, silverRate, totalFineWeight,
+    previousBills, showPreviousBillItems
 }) => {
     const totalSilverFine = silverPayments.reduce((s, p) => s + (p.fineWeight || 0), 0);
 
@@ -74,8 +78,57 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                     </tr>
                 </thead>
                 <tbody>
+                    {/* Render Previous Bill Items if Toggle is ON */}
+                    {showPreviousBillItems && previousBills && previousBills.length > 0 && (
+                        <>
+                            <tr style={{ backgroundColor: '#FFCCBC' }}>
+                                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', fontWeight: '800', fontSize: '14px', color: '#D84315' }}>
+                                    मागील बाकी बिलातील वस्तू (Unpaid Old Bills)
+                                </td>
+                            </tr>
+                            {previousBills.map((prevBill, idx) => (
+                                <React.Fragment key={`prev-bill-${idx}`}>
+                                    <tr style={{ backgroundColor: '#FFCDD2' }}>
+                                        <td colSpan={7} style={{ ...tdStyle, textAlign: 'left', fontWeight: '700', fontSize: '13px', color: '#B71C1C' }}>
+                                            बिल #{prevBill.billNumber} (दिनांक: {prevBill.date ? new Date(prevBill.date).toLocaleDateString('mr-IN') : '—'}) — 
+                                            {" "}एकूण: ₹{prevBill.totalPayable?.toLocaleString('en-IN')}
+                                            {prevBill.depositedSilverFineWeight > 0 && ` | जमा चांदी: ${prevBill.depositedSilverFineWeight.toFixed(3)}g`}
+                                            {" "} | जमा: ₹{prevBill.paidAmount?.toLocaleString('en-IN')} |
+                                            {" "}बाकी: ₹{prevBill.remainingBalance?.toLocaleString('en-IN')}
+                                        </td>
+                                    </tr>
+                                    {prevBill.items && prevBill.items.filter((it: any) => it.description || it.weight > 0).map((item: any, i: number) => (
+                                        <tr key={`prev-${idx}-${i}`} style={{ backgroundColor: '#ffebee', opacity: 0.85 }}>
+                                            <td style={{ ...tdStyle, textAlign: 'left', fontWeight: '700', fontSize: '14px', color: '#555' }}>
+                                                {item.description || '—'}
+                                            </td>
+                                            <td style={{ ...tdStyle, textAlign: 'center', color: '#555' }}>{item.quantity}</td>
+                                            <td style={{ ...tdStyle, color: '#555' }}>{item.weight.toFixed(3)}</td>
+                                            <td style={{ ...tdStyle, color: '#555' }}>{item.touch.toFixed(2)}</td>
+                                            <td style={{ ...tdStyle, fontWeight: '700', color: '#c62828' }}>{item.fine.toFixed(3)}</td>
+                                            <td style={{ ...tdStyle, color: '#555' }}>{item.makingCharge.toFixed(2)}</td>
+                                            <td style={{ ...tdStyle, fontWeight: '700', fontSize: '14px', color: '#555' }}>
+                                                ₹{item.amount.toLocaleString('en-IN')}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </React.Fragment>
+                            ))}
+                            {/* Separator before current bill items */}
+                            <tr>
+                                <td colSpan={7} style={{ height: '12px', padding: 0, border: 'none', backgroundColor: '#FFFDE7' }}></td>
+                            </tr>
+                            <tr style={{ backgroundColor: '#C8E6C9' }}>
+                                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', fontWeight: '800', fontSize: '14px', color: '#1B5E20' }}>
+                                    नवीन वस्तू (Current Items)
+                                </td>
+                            </tr>
+                        </>
+                    )}
+
+                    {/* Render Current Bill Items */}
                     {items.filter(it => it.description || it.weight > 0).map((item, i) => (
-                        <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#fff' : '#FFF9C4' }}>
+                        <tr key={`curr-${i}`} style={{ backgroundColor: i % 2 === 0 ? '#fff' : '#FFF9C4' }}>
                             <td style={{ ...tdStyle, textAlign: 'left', fontWeight: '700', fontSize: '15px' }}>{item.description || '—'}</td>
                             <td style={{ ...tdStyle, textAlign: 'center' }}>{item.quantity}</td>
                             <td style={tdStyle}>{item.weight.toFixed(3)}</td>

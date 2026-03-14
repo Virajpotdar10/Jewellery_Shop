@@ -75,6 +75,10 @@ const Billing = () => {
     const [manualPrevBalance, setManualPrevBalance] = useState<string>('');
     const [manualPrevFine, setManualPrevFine] = useState<string>('');
 
+    // Previous Bill items
+    const [previousBills, setPreviousBills] = useState<any[]>([]);
+    const [showPreviousBillItems, setShowPreviousBillItems] = useState(true);
+
     const [saving, setSaving] = useState(false);
     const [savedBill, setSavedBill] = useState<any>(null);
     const [sharing, setSharing] = useState(false);
@@ -123,6 +127,38 @@ const Billing = () => {
         // Auto-fill previous balance from DB, user can override
         setManualPrevBalance(c.currentBalance > 0 ? String(c.currentBalance) : '');
         setManualPrevFine(c.fineBalance > 0 ? String(c.fineBalance) : '');
+
+        // Fetch both the customer's unpaid bills and their silver payments
+        Promise.all([
+            api.get(`/bills?customerId=${c._id}`),
+            api.get(`/silver-payments/${c._id}`)
+        ]).then(([billsRes, silverRes]) => {
+            const billsData = billsRes.data || [];
+            const silverData = silverRes.data || [];
+
+            if (billsData.length > 0) {
+                const unpaidBills = billsData.filter((b: any) => b.remainingBalance > 0);
+                
+                // For each unpaid bill, sum up any associated silver payments
+                const unpaidWithSilver = unpaidBills.map((b: any) => {
+                    const depositedSilverForBill = silverData
+                        .filter((sp: any) => sp.billId === b._id)
+                        .reduce((sum: number, sp: any) => sum + (sp.fineWeight || 0), 0);
+                    
+                    return { ...b, depositedSilverFineWeight: depositedSilverForBill };
+                });
+
+                // Sort ascending for chronological display on the bill
+                const chronologicalUnpaid = unpaidWithSilver.reverse();
+                
+                setPreviousBills(chronologicalUnpaid);
+                setShowPreviousBillItems(chronologicalUnpaid.length > 0);
+            } else {
+                setPreviousBills([]);
+            }
+        }).catch(() => {
+            setPreviousBills([]);
+        });
     };
 
     const handleAddNewCustomer = async () => {
@@ -293,7 +329,9 @@ const Billing = () => {
         cashPaid: effectiveCash, upiPaid: effectiveUpi, bankPaid: effectiveBank,
         silverPayments: effectiveSilverWeight > 0 ? [silver] : [], paymentMode, paidAmount, remainingBalance,
         billNumber: savedBill?.billNumber, billDate: savedBill?.date,
-        silverRate: silverRatePerKg, totalFineWeight
+        silverRate: silverRatePerKg, totalFineWeight,
+        // Pass previous bill data
+        previousBills, showPreviousBillItems
     };
 
     return (
@@ -422,6 +460,22 @@ const Billing = () => {
                                     className="w-full border-2 border-blue-300 focus:border-blue-500 rounded-md px-3 py-1.5 text-sm focus:outline-none" />
                             </div>
                         </div>
+
+                        {/* Toggle Previous Items Print */}
+                        {previousBills.length > 0 && manualPrevBalance && (
+                            <div className="flex items-center gap-2 mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
+                                <input 
+                                    type="checkbox" 
+                                    id="showPrevItems" 
+                                    className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded" 
+                                    checked={showPreviousBillItems}
+                                    onChange={(e) => setShowPreviousBillItems(e.target.checked)}
+                                />
+                                <label htmlFor="showPrevItems" className="text-sm font-semibold text-gray-700 select-none cursor-pointer">
+                                    मागील बिलाचे तपशील दाखवा (Show Previous Bill Items)
+                                </label>
+                            </div>
+                        )}
                     </div>
 
                     {/* ── Items — MOBILE: vertical cards ── */}
