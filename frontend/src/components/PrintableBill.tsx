@@ -181,7 +181,7 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                             )}
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '22px', borderTop: '2.5px solid #2E7D32', paddingTop: '10px', marginTop: 'auto', fontWeight: '900', color: ((totalFineWeight + previousFine) - totalSilverFine) > 0 ? '#C62828' : '#2E7D32' }}>
-                                <span>शिल्लक{'\u00A0'}फाइन:</span><span>{((totalFineWeight + previousFine) - totalSilverFine).toFixed(3)}{'\u00A0'}g</span>
+                                <span>शिल्लक{'\u00A0'}फाइन:</span><span>{Math.abs((totalFineWeight + previousFine) - totalSilverFine).toFixed(3)}{'\u00A0'}g</span>
                             </div>
                         </div>
                     </div>
