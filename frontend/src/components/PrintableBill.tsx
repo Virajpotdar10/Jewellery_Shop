@@ -181,7 +181,7 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                             )}
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '22px', borderTop: '2.5px solid #2E7D32', paddingTop: '10px', marginTop: 'auto', fontWeight: '900', color: ((totalFineWeight + previousFine) - totalSilverFine) > 0 ? '#C62828' : '#2E7D32' }}>
-                                <span>शिल्लक{'\u00A0'}फाइन:</span><span>{Math.abs((totalFineWeight + previousFine) - totalSilverFine).toFixed(3)}{'\u00A0'}g</span>
+                                <span>{((totalFineWeight + previousFine) - totalSilverFine) > 0 ? 'येणे' : 'जमा'}{'\u00A0'}फाइन:</span><span>{Math.abs((totalFineWeight + previousFine) - totalSilverFine).toFixed(3)}{'\u00A0'}g</span>
                             </div>
                         </div>
                     </div>
@@ -201,7 +201,7 @@ export const PrintableBill: React.FC<PrintableBillProps> = ({
                             {bankPaid > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#6A1B9A' }}><span>बँक{'\u00A0'}जमा:</span><strong>₹{bankPaid.toLocaleString('en-IN')}</strong></div>}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '22px', borderTop: '2.5px solid #C62828', paddingTop: '10px', marginTop: '10px', fontWeight: '900', color: remainingBalance > 0 ? '#C62828' : '#2E7D32' }}>
-                            <span>शिल्लक{'\u00A0'}र.:</span><span>₹{remainingBalance.toLocaleString('en-IN')}</span>
+                            <span>{remainingBalance > 0 ? 'येणे' : 'जमा'}{'\u00A0'}र.:</span><span>₹{Math.abs(remainingBalance).toLocaleString('en-IN')}</span>
                         </div>
                     </div>
                 </div>
